@@ -914,930 +914,628 @@ class LPerf:
             logger.error(f"CPU数据收集异常: {e}")
             return 0.0
     
+    def _get_android_memory_collection_methods(self):
+        """获取Android内存数据收集方法列表"""
+        return [
+            {
+                'name': 'Android 14+ 内存API',
+                'platform': 'android',
+                'min_version': 14,
+                'func': lambda: self._get_android14_app_memory_data(self.package_name)
+            },
+            {
+                'name': '传统dumpsys方法',
+                'platform': 'android',
+                'func': lambda: self._collect_android_memory_via_dumpsys()
+            }
+        ]
+    
+    def _get_ios_memory_collection_methods(self):
+        """获取iOS内存数据收集方法列表"""
+        return [
+            {
+                'name': 'ideviceinfo方法',
+                'platform': 'ios',
+                'func': lambda: self._collect_ios_memory_via_ideviceinfo()
+            },
+            {
+                'name': 'top命令方法',
+                'platform': 'ios',
+                'func': lambda: self._collect_ios_memory_via_top()
+            }
+        ]
+    
+    def _collect_android_memory_via_dumpsys(self):
+        """通过dumpsys收集Android内存数据"""
+        try:
+            output = self._command_method(f"dumpsys meminfo {self.package_name}")
+            if output:
+                for line in output.split('\n'):
+                    if 'TOTAL PSS:' in line:
+                        parts = line.strip().split()
+                        if len(parts) >= 3:
+                            try:
+                                pss_memory = int(parts[2]) / 1024  # 转换为MB
+                                return pss_memory
+                            except ValueError:
+                                pass
+            return None
+        except Exception as e:
+            logger.warning(f"dumpsys内存收集失败: {e}")
+            return None
+    
+    def _collect_ios_memory_via_ideviceinfo(self):
+        """通过ideviceinfo收集iOS内存数据"""
+        try:
+            output = self._command_method("ideviceinfo -k MemoryUsage")
+            if output:
+                try:
+                    memory_usage = float(output) / (1024 * 1024)  # 转换为MB
+                    return memory_usage
+                except ValueError:
+                    pass
+            return None
+        except Exception as e:
+            logger.warning(f"ideviceinfo内存收集失败: {e}")
+            return None
+    
+    def _collect_ios_memory_via_top(self):
+        """通过top命令收集iOS内存数据"""
+        try:
+            output = self._command_method(f"idevicedebug run 'top -l 1 -n 0'")
+            if output:
+                app_memory_usage = {app: 0.0 for app in self.package_name}
+                lines = output.strip().split('\n')
+                
+                for line in lines:
+                    line = line.strip()
+                    for app in self.package_name:
+                        if app in line:
+                            parts = line.split()
+                            if len(parts) > 7:
+                                try:
+                                    mem_str = parts[7]
+                                    if 'M' in mem_str:
+                                        memory_usage = float(mem_str.replace('M', ''))
+                                        app_memory_usage[app] = memory_usage
+                                except (IndexError, ValueError):
+                                    pass
+                                break
+                
+                return app_memory_usage
+            return None
+        except Exception as e:
+            logger.warning(f"top命令内存收集失败: {e}")
+            return None
+    
     def collect_memory_data(self):
-        """收集内存使用数据 - 增强稳定性版本"""
+        """收集内存使用数据 - 重构优化版本"""
         try:
             if self.platform == 'android':
-                # 获取Android系统版本
-                try:
-                    android_version = self._command_method("getprop ro.build.version.release")
-                    if android_version and android_version.strip().isdigit():
-                        version = int(android_version.strip())
-                        logger.debug(f"Android版本: {version}")
-                        
-                        # Android 14+ 使用新的内存统计方法
-                        if version >= 14:
-                            try:
-                                memory_data = self._get_android14_app_memory_data(app)
-                                if memory_data is not None:
-                                    return memory_data
-                            except Exception as e:
-                                logger.warning(f"Android 14+ 内存数据收集失败: {e}")
-                except Exception as e:
-                    logger.warning(f"获取Android版本失败: {e}")
+                collection_methods = self._get_android_memory_collection_methods()
+            elif self.platform == 'ios':
+                collection_methods = self._get_ios_memory_collection_methods()
+            else:
+                logger.error(f"不支持的平台: {self.platform}")
+                return 0.0
+            
+            return self._collect_data_with_fallback('memory', collection_methods, 0.0)
+            
+        except Exception as e:
+            logger.error(f"内存数据收集异常: {e}")
+            return 0.0
+    
+    def _get_android_battery_collection_methods(self):
+        """获取Android电池数据收集方法列表"""
+        return [
+            {
+                'name': 'dumpsys电池方法',
+                'platform': 'android',
+                'func': lambda: self._collect_android_battery_via_dumpsys()
+            }
+        ]
+    
+    def _get_ios_battery_collection_methods(self):
+        """获取iOS电池数据收集方法列表"""
+        return [
+            {
+                'name': 'ideviceinfo电池方法',
+                'platform': 'ios',
+                'func': lambda: self._collect_ios_battery_via_ideviceinfo()
+            },
+            {
+                'name': 'grep电池方法',
+                'platform': 'ios',
+                'func': lambda: self._collect_ios_battery_via_grep()
+            }
+        ]
+    
+    def _collect_android_battery_via_dumpsys(self):
+        """通过dumpsys收集Android电池数据"""
+        try:
+            output = self._command_method("dumpsys battery")
+            if output:
+                battery_info = {}
+                for line in output.split('\n'):
+                    if ': ' in line:
+                        key, value = line.split(': ', 1)
+                        battery_info[key.strip()] = value.strip()
                 
-                # 传统方法 (适用于所有Android版本)
+                if 'level' in battery_info:
+                    try:
+                        battery_level = int(battery_info['level'])
+                        return battery_level
+                    except ValueError:
+                        logger.warning("电池电量解析失败")
+            
+            return None
+        except Exception as e:
+            logger.warning(f"dumpsys电池收集失败: {e}")
+            return None
+    
+    def _collect_ios_battery_via_ideviceinfo(self):
+        """通过ideviceinfo收集iOS电池数据"""
+        try:
+            output = self._command_method("ideviceinfo -k BatteryCurrentCapacity")
+            if output and output.strip().isdigit():
+                battery_level = int(output.strip())
+                return battery_level
+            return None
+        except Exception as e:
+            logger.warning(f"ideviceinfo电池收集失败: {e}")
+            return None
+    
+    def _collect_ios_battery_via_grep(self):
+        """通过grep收集iOS电池数据"""
+        try:
+            output = self._command_method("ideviceinfo | grep -A 5 Battery")
+            if output:
+                for line in output.split('\n'):
+                    if 'BatteryCurrentCapacity:' in line:
+                        try:
+                            parts = line.split(':')
+                            if len(parts) > 1:
+                                battery_level = int(parts[1].strip())
+                                return battery_level
+                        except ValueError:
+                            continue
+            return None
+        except Exception as e:
+            logger.warning(f"grep电池收集失败: {e}")
+            return None
+    
+    def collect_battery_data(self):
+        """收集电池数据 - 重构优化版本"""
+        try:
+            if self.platform == 'android':
+                collection_methods = self._get_android_battery_collection_methods()
+            elif self.platform == 'ios':
+                collection_methods = self._get_ios_battery_collection_methods()
+            else:
+                logger.error(f"不支持的平台: {self.platform}")
+                return 50  # 默认电池电量50%
+            
+            result = self._collect_data_with_fallback('battery', collection_methods, 50)
+            
+            # 电池数据是设备级别的，为每个应用记录相同的数据
+            if isinstance(result, (int, float)):
+                timestamp = datetime.now().isoformat()
+                self.results['global']['battery'].append({'timestamp': timestamp, 'value': result})
+                for app in self.package_name:
+                    if app in self.results:
+                        self.results[app]['battery'].append({'timestamp': timestamp, 'value': result})
+            
+            return result
+            
+        except Exception as e:
+            logger.error(f"电池数据收集异常: {e}")
+            return 50  # 默认电池电量50%
+    
+    def _get_android_network_collection_methods(self):
+        """获取Android网络数据收集方法列表"""
+        return [
+            {
+                'name': 'dumpsys流量方法',
+                'platform': 'android',
+                'func': lambda: self._collect_android_network_via_dumpsys()
+            }
+        ]
+    
+    def _get_ios_network_collection_methods(self):
+        """获取iOS网络数据收集方法列表"""
+        return [
+            {
+                'name': '系统日志方法',
+                'platform': 'ios',
+                'func': lambda: self._get_ios_network_from_logs()
+            },
+            {
+                'name': '网络接口方法',
+                'platform': 'ios',
+                'func': lambda: self._get_ios_network_interfaces()
+            },
+            {
+                'name': '应用估算方法',
+                'platform': 'ios',
+                'func': lambda: self._get_ios_app_network_estimates()
+            }
+        ]
+    
+    def _collect_android_network_via_dumpsys(self):
+        """通过dumpsys收集Android网络数据"""
+        try:
+            app_network_usage = {app: 0.0 for app in self.package_name}
+            
+            for app in self.package_name:
                 try:
-                    output = self._command_method(f"dumpsys meminfo {self.package_name}")
+                    output = self._command_method(f"dumpsys traffic | grep {app}")
                     if output:
-                        # 查找PSS内存信息
-                        # 示例: "TOTAL PSS:  123456 kB"
-                        for line in output.split('\n'):
-                            if 'TOTAL PSS:' in line:
+                        total_bytes = 0
+                        lines = output.strip().split('\n')
+                        for line in lines:
+                            if app in line:
                                 parts = line.strip().split()
                                 if len(parts) >= 3:
                                     try:
-                                        pss_memory = int(parts[2]) / 1024  # 转换为MB
-                                        timestamp = datetime.now().isoformat()
-                                        self.results['memory'].append({'timestamp': timestamp, 'value': pss_memory})
-                                        logger.debug(f"Android内存数据: {pss_memory:.2f} MB")
-                                        return pss_memory
+                                        foreground_bytes = int(parts[1])
+                                        background_bytes = int(parts[2])
+                                        total_bytes += foreground_bytes + background_bytes
                                     except ValueError:
-                                        pass
-                except Exception as e:
-                    logger.warning(f"传统内存数据收集失败: {e}")
-                
-                # 如果所有方法都失败，返回默认值
-                logger.warning("内存数据收集失败，使用默认值0.0")
-                return 0.0
-            elif self.platform == 'ios':
-                # iOS平台获取内存使用情况
-                # 第一种方法：使用instruments命令获取内存使用情况
-                try:
-                    # 注意：这种方法需要Xcode并且可能需要更复杂的配置
-                    # 这里使用一个简化的方法作为示例
-                    output = self._command_method("ideviceinfo -k MemoryUsage")
-                    if output:
-                        try:
-                            # 假设输出格式为JSON或可解析的格式
-                            # 实际情况可能需要根据具体输出进行调整
-                            memory_usage = float(output) / (1024 * 1024)  # 转换为MB
-                            timestamp = datetime.now().isoformat()
-                            self.results['memory'].append({'timestamp': timestamp, 'value': memory_usage})
-                            return memory_usage
-                        except ValueError:
-                            pass
-                except Exception:
-                    pass
-                    
-                # 第二种方法：使用top命令获取内存使用情况
-                try:
-                    # 技术说明：iOS平台获取应用级内存使用可以通过多种方法，这里使用top命令作为示例
-                    output = self._command_method(f"idevicedebug run 'top -l 1 -n 0'")
-                    if output:
-                        # 按应用维度解析内存使用率
-                        app_memory_usage = {app: 0.0 for app in self.package_name}
-                        lines = output.strip().split('\n')
+                                        continue
                         
-                        for line in lines:
-                            line = line.strip()
-                            for app in self.package_name:
-                                if app in line:
-                                    parts = line.split()
-                                    if len(parts) > 7:  # 假设内存信息在第8列左右
-                                        try:
-                                            # 假设内存值格式为 "123.4M"
-                                            mem_str = parts[7]
-                                            if 'M' in mem_str:
-                                                memory_usage = float(mem_str.replace('M', ''))
-                                                app_memory_usage[app] = memory_usage
-                                        except (IndexError, ValueError):
-                                            pass
-                                        break
-                        
-                        timestamp = datetime.now().isoformat()
-                        
-                        # 保存每个应用的内存使用率
-                        total_memory = 0.0
-                        count = 0
-                        for app, memory_usage in app_memory_usage.items():
-                            self.results[app]['memory'].append({'timestamp': timestamp, 'value': memory_usage})
-                            if memory_usage > 0:
-                                total_memory += memory_usage
-                                count += 1
-                        
-                        # 计算全局内存使用率平均值
-                        global_memory = total_memory / count if count > 0 else 0.0
-                        self.results['global']['memory'].append({'timestamp': timestamp, 'value': global_memory})
-                        
-                        return app_memory_usage
-                except Exception:
-                    # 如果上述方法都失败，返回0
-                    return {app: 0.0 for app in self.package_name}
-        except Exception as e:
-            print(f"收集内存数据异常: {e}")
-            return 0.0
-    
-    def collect_battery_data(self):
-        """收集电池数据 - 增强稳定性版本"""
-        try:
-            if self.platform == 'android':
-                # 获取电池信息
-                try:
-                    output = self._command_method("dumpsys battery")
-                    if output:
-                        battery_info = {}
-                        for line in output.split('\n'):
-                            if ': ' in line:
-                                key, value = line.split(': ', 1)
-                                battery_info[key.strip()] = value.strip()
-                        
-                        # 提取电池电量
-                        if 'level' in battery_info:
-                            try:
-                                battery_level = int(battery_info['level'])
-                                timestamp = datetime.now().isoformat()
-                                
-                                # 记录全局电池数据
-                                self.results['global']['battery'].append({'timestamp': timestamp, 'value': battery_level})
-                                
-                                # 为每个应用记录相同的电池数据
-                                for app in self.package_name:
-                                    self.results[app]['battery'].append({'timestamp': timestamp, 'value': battery_level})
-                                
-                                return battery_level
-                            except ValueError:
-                                logger.warning("电池电量解析失败")
-                        
-                        # 如果无法获取电池数据，记录默认值
-                        logger.debug("未获取到电池数据，使用默认值")
-                        timestamp = datetime.now().isoformat()
-                        self.results['global']['battery'].append({'timestamp': timestamp, 'value': 50})
-                        for app in self.package_name:
-                            self.results[app]['battery'].append({'timestamp': timestamp, 'value': 50})
-                        return 50  # 默认电池电量50%
+                        network_mb = total_bytes / (1024 * 1024)
+                        app_network_usage[app] = network_mb
                     else:
-                        logger.debug("未获取到电池数据，使用默认值")
-                        timestamp = datetime.now().isoformat()
-                        self.results['global']['battery'].append({'timestamp': timestamp, 'value': 50})
-                        for app in self.package_name:
-                            self.results[app]['battery'].append({'timestamp': timestamp, 'value': 50})
-                        return 50  # 默认电池电量50%
+                        app_network_usage[app] = 0.0
                 except Exception as e:
-                    logger.warning(f"Android电池数据收集失败: {e}，使用默认值")
-                    timestamp = datetime.now().isoformat()
-                    self.results['global']['battery'].append({'timestamp': timestamp, 'value': 50})
-                    for app in self.package_name:
-                        self.results[app]['battery'].append({'timestamp': timestamp, 'value': 50})
-                    return 50  # 默认电池电量50%
-            elif self.platform == 'ios':
-                # iOS平台获取电池信息
-                try:
-                    # 使用ideviceinfo获取电池电量
-                    # 技术说明：电池数据是设备级别的指标，但我们为每个应用记录相同的数据以支持按应用维度的报告生成
-                    output = self._command_method("ideviceinfo -k BatteryCurrentCapacity")
-                    if output and output.strip().isdigit():
-                        battery_level = int(output.strip())
-                        timestamp = datetime.now().isoformat()
-                        
-                        # 记录全局电池数据
-                        self.results['global']['battery'].append({'timestamp': timestamp, 'value': battery_level})
-                        
-                        # 为每个应用记录相同的电池数据
-                        for app in self.package_name:
-                            self.results[app]['battery'].append({'timestamp': timestamp, 'value': battery_level})
-                        
-                        return battery_level
-                    
-                    # 如果上述方法失败，尝试另一种方法
-                    output = self._command_method("ideviceinfo | grep -A 5 Battery")
-                    if output:
-                        for line in output.split('\n'):
-                            if 'BatteryCurrentCapacity:' in line:
-                                try:
-                                    parts = line.split(':')
-                                    if len(parts) > 1:
-                                        battery_level = int(parts[1].strip())
-                                        timestamp = datetime.now().isoformat()
-                                        
-                                        # 记录全局电池数据
-                                        self.results['global']['battery'].append({'timestamp': timestamp, 'value': battery_level})
-                                        
-                                        # 为每个应用记录相同的电池数据
-                                        for app in self.package_name:
-                                            self.results[app]['battery'].append({'timestamp': timestamp, 'value': battery_level})
-                                        
-                                        return battery_level
-                                except ValueError:
-                                    continue
-                    
-                    # 如果无法获取电池电量，记录0值
-                    timestamp = datetime.now().isoformat()
-                    self.results['global']['battery'].append({'timestamp': timestamp, 'value': 0})
-                    for app in self.package_name:
-                        self.results[app]['battery'].append({'timestamp': timestamp, 'value': 0})
-                    return 0
-                except Exception as e:
-                    logger.warning(f"iOS电池数据收集失败: {e}，使用默认值")
-                    timestamp = datetime.now().isoformat()
-                    self.results['global']['battery'].append({'timestamp': timestamp, 'value': 50})
-                    for app in self.package_name:
-                        self.results[app]['battery'].append({'timestamp': timestamp, 'value': 50})
-                    return 50  # 默认电池电量50%
-        except Exception as e:
-            logger.error(f"收集电池数据异常: {e}")
-            # 异常情况下记录默认值
-            timestamp = datetime.now().isoformat()
-            self.results['global']['battery'].append({'timestamp': timestamp, 'value': 50})
-            for app in self.package_name:
-                self.results[app]['battery'].append({'timestamp': timestamp, 'value': 50})
-            return 50  # 默认电池电量50%
+                    logger.warning(f"应用 {app} 网络数据收集失败: {e}")
+                    app_network_usage[app] = 0.0
             
+            return app_network_usage
+        except Exception as e:
+            logger.warning(f"dumpsys网络收集失败: {e}")
+            return None
+    
     def collect_network_data(self):
-        """收集网络流量数据 - 增强稳定性版本"""
+        """收集网络流量数据 - 重构优化版本"""
         try:
             if self.platform == 'android':
-                # Android平台获取网络流量信息
-                # 技术说明：Android平台使用dumpsys traffic命令获取应用级网络流量数据
-                
-                # 为每个应用分别采集网络流量数据
-                app_network_usage = {app: 0.0 for app in self.package_name}
-                
-                for app in self.package_name:
-                    try:
-                        output = self._command_method(f"dumpsys traffic | grep {app}")
-                        if output:
-                            # 解析网络流量数据
-                            # 示例输出: "com.example.app\tForeground: 12345678\tBackground: 87654321"
-                            total_bytes = 0
-                            lines = output.strip().split('\n')
-                            for line in lines:
-                                if app in line:
-                                    parts = line.strip().split()
-                                    if len(parts) >= 3:
-                                        try:
-                                            # 提取前台和后台流量（单位：字节）
-                                            foreground_bytes = int(parts[1])
-                                            background_bytes = int(parts[2])
-                                            total_bytes += foreground_bytes + background_bytes
-                                        except ValueError:
-                                            continue
-                            
-                            # 转换为MB
-                            network_mb = total_bytes / (1024 * 1024)
-                            app_network_usage[app] = network_mb
-                        else:
-                            logger.debug(f"应用 {app} 未获取到网络数据，使用默认值")
-                            app_network_usage[app] = 0.0
-                    except Exception as e:
-                        logger.warning(f"应用 {app} 网络数据收集失败: {e}，使用默认值")
-                        app_network_usage[app] = 0.0
-                
-                timestamp = datetime.now().isoformat()
-                
-                # 保存每个应用的网络流量数据
-                total_network = 0.0
-                count = 0
-                for app, network_mb in app_network_usage.items():
-                    self.results[app]['network'].append({'timestamp': timestamp, 'value': network_mb})
-                    if network_mb > 0:
-                        total_network += network_mb
-                        count += 1
-                
-                # 计算全局网络流量平均值
-                global_network = total_network / count if count > 0 else 0.0
-                self.results['global']['network'].append({'timestamp': timestamp, 'value': global_network})
-                
-                return app_network_usage
+                collection_methods = self._get_android_network_collection_methods()
             elif self.platform == 'ios':
-                # iOS平台获取网络流量信息 - 改进版本
-                app_network_usage = {app: 0.0 for app in self.package_name}
-                
-                try:
-                    # 方法1: 使用idevicesyslog获取网络相关日志
-                    network_data = self._get_ios_network_from_logs()
-                    
-                    # 方法2: 使用ideviceinfo获取网络接口信息
-                    interface_data = self._get_ios_network_interfaces()
-                    
-                    # 方法3: 基于应用类型估算网络使用
-                    app_network_estimates = self._get_ios_app_network_estimates()
-                    
-                    # 综合多种方法计算网络流量
-                    for app in self.package_name:
-                        # 优先级: 应用估算 > 接口数据 > 日志分析 > 默认值
-                        if app in app_network_estimates and app_network_estimates[app] > 0:
-                            app_network_usage[app] = app_network_estimates[app]
-                        elif interface_data > 0:
-                            app_network_usage[app] = interface_data
-                        elif network_data > 0:
-                            app_network_usage[app] = network_data
-                        else:
-                            app_network_usage[app] = 0.1  # 默认值 0.1MB
-                        
-                        logger.debug(f"iOS应用 {app} 网络流量: {app_network_usage[app]:.2f} MB")
-                    
+                collection_methods = self._get_ios_network_collection_methods()
+            else:
+                logger.error(f"不支持的平台: {self.platform}")
+                return {app: 0.0 for app in self.package_name}
+            
+            result = self._collect_data_with_fallback('network', collection_methods, {app: 0.0 for app in self.package_name})
+            
+            # 如果返回的是字典（多应用数据），计算全局平均值
+            if isinstance(result, dict):
+                valid_values = [v for v in result.values() if v > 0]
+                if valid_values:
+                    global_network = sum(valid_values) / len(valid_values)
                     timestamp = datetime.now().isoformat()
-                    
-                    # 保存数据
-                    total_network = 0.0
-                    count = 0
-                    for app, network_mb in app_network_usage.items():
-                        self.results[app]['network'].append({'timestamp': timestamp, 'value': network_mb})
-                        if network_mb > 0:
-                            total_network += network_mb
-                            count += 1
-                    
-                    global_network = total_network / count if count > 0 else 0.0
                     self.results['global']['network'].append({'timestamp': timestamp, 'value': global_network})
-                    
-                    return app_network_usage
-                    
-                except Exception as e:
-                    logger.error(f"iOS网络流量收集异常: {e}")
-                    # 异常情况下返回默认值
-                    timestamp = datetime.now().isoformat()
-                    self.results['global']['network'].append({'timestamp': timestamp, 'value': 0.0})
-                    for app in self.package_name:
-                        self.results[app]['network'].append({'timestamp': timestamp, 'value': 0.0})
-                    return {app: 0.0 for app in self.package_name}
             
-            # 如果无法获取网络流量数据，返回0值
-            timestamp = datetime.now().isoformat()
-            self.results['global']['network'].append({'timestamp': timestamp, 'value': 0.0})
-            for app in self.package_name:
-                self.results[app]['network'].append({'timestamp': timestamp, 'value': 0.0})
-            return {app: 0.0 for app in self.package_name}
+            return result
+            
         except Exception as e:
-            print(f"收集网络数据异常: {e}")
-            return 0.0
-            
+            logger.error(f"网络数据收集异常: {e}")
+            return {app: 0.0 for app in self.package_name}
+    
+    def _get_android_fps_collection_methods(self):
+        """获取Android FPS数据收集方法列表"""
+        return [
+            {
+                'name': 'Android 14+ FPS API',
+                'platform': 'android',
+                'min_version': 14,
+                'func': lambda: self._get_android14_app_fps_data(self.package_name)
+            },
+            {
+                'name': '传统dumpsys方法',
+                'platform': 'android',
+                'func': lambda: self._collect_android_fps_via_dumpsys()
+            }
+        ]
+    
+    def _get_ios_fps_collection_methods(self):
+        """获取iOS FPS数据收集方法列表"""
+        return [
+            {
+                'name': 'top命令方法',
+                'platform': 'ios',
+                'func': lambda: self._collect_ios_fps_via_top()
+            }
+        ]
+    
+    def _collect_android_fps_via_dumpsys(self):
+        """通过dumpsys收集Android FPS数据"""
+        try:
+            output = self._command_method(f"dumpsys gfxinfo {self.package_name} --latency SurfaceView")
+            if output:
+                lines = output.strip().split('\n')[2:]  # 跳过前两行头信息
+                frame_times = []
+                
+                for line in lines:
+                    line = line.strip()
+                    if line and not line.startswith('--'):
+                        values = line.split()
+                        for value in values:
+                            try:
+                                frame_time = float(value) / 1000000  # 转换为毫秒
+                                frame_times.append(frame_time)
+                            except ValueError:
+                                continue
+                
+                # 计算FPS
+                if frame_times:
+                    avg_frame_time = sum(frame_times) / len(frame_times)
+                    fps = 1000 / avg_frame_time if avg_frame_time > 0 else 0
+                    return fps
+                else:
+                    logger.debug(f"应用 {self.package_name} 未获取到帧时间数据，使用默认值")
+                    return 59.0  # 默认FPS值
+            return None
+        except Exception as e:
+            logger.warning(f"dumpsys FPS收集失败: {e}")
+            return None
+    
+    def _collect_ios_fps_via_top(self):
+        """通过top命令收集iOS FPS数据"""
+        try:
+            output = self._command_method(f"idevicedebug run 'top -l 1 -n 0'")
+            if output:
+                app_fps_usage = {app: 0.0 for app in self.package_name}
+                lines = output.strip().split('\n')
+                
+                for line in lines:
+                    line = line.strip()
+                    for app in self.package_name:
+                        if app in line:
+                            parts = line.split()
+                            if len(parts) > 2:
+                                try:
+                                    fps_usage_str = parts[2].replace('%', '')
+                                    fps_percent = float(fps_usage_str)
+                                    app_fps_usage[app] = fps_percent
+                                except (IndexError, ValueError):
+                                    pass
+                                break
+                
+                return app_fps_usage
+            return None
+        except Exception as e:
+            logger.warning(f"top命令FPS收集失败: {e}")
+            return None
+    
     def collect_fps_data(self):
         """收集FPS（帧率）数据"""
         try:
             if self.platform == 'android':
-                # Android平台通过dumpsys gfxinfo命令获取SurfaceView帧率数据
-                app_fps_values = {app: 0.0 for app in self.package_name}
-                
-                for app in self.package_name:
-                    try:
-                        output = self._command_method(f"dumpsys gfxinfo {app} --latency SurfaceView")
-                        if output:
-                            lines = output.strip().split('\n')[2:]  # 跳过前两行头信息
-                            frame_times = []
-                            
-                            for line in lines:
-                                line = line.strip()
-                                if line and not line.startswith('--'):
-                                    values = line.split()
-                                    for value in values:
-                                        try:
-                                            frame_time = float(value) / 1000000  # 转换为毫秒
-                                            frame_times.append(frame_time)
-                                        except ValueError:
-                                            continue
-                            
-                            # 计算FPS
-                            if frame_times:
-                                avg_frame_time = sum(frame_times) / len(frame_times)
-                                fps = 1000 / avg_frame_time if avg_frame_time > 0 else 0
-                                app_fps_values[app] = fps
-                                logger.debug(f"Android应用 {app} FPS: {fps:.2f}")
-                            else:
-                                logger.debug(f"应用 {app} 未获取到帧时间数据，使用默认值")
-                                app_fps_values[app] = 59.0  # 默认FPS值
-                        else:
-                            logger.debug(f"应用 {app} 未获取到FPS数据，使用默认值")
-                            app_fps_values[app] = 59.0  # 默认FPS值
-                    except Exception as e:
-                        logger.warning(f"应用 {app} FPS数据收集失败: {e}，使用默认值")
-                        app_fps_values[app] = 59.0  # 默认FPS值
-                
-                timestamp = datetime.now().isoformat()
-                
-                # 保存每个应用的FPS数据
-                total_fps = 0.0
-                count = 0
-                for app, fps_value in app_fps_values.items():
-                    self.results[app]['fps'].append({'timestamp': timestamp, 'value': fps_value})
-                    if fps_value > 0:
-                        total_fps += fps_value
-                        count += 1
-                
-                global_fps = total_fps / count if count > 0 else 0.0
-                self.results['global']['fps'].append({'timestamp': timestamp, 'value': global_fps})
-                
-                return app_fps_values
-                
+                collection_methods = self._get_android_fps_collection_methods()
             elif self.platform == 'ios':
-                # iOS平台获取FPS信息 - 改进版本
-                app_fps_values = {app: 0.0 for app in self.package_name}
-                
-                try:
-                    # 方法1: 使用idevicesyslog获取系统日志
-                    fps_data = self._get_ios_fps_from_logs()
-                    
-                    # 方法2: 使用ideviceinfo获取设备性能信息
-                    device_performance = self._get_ios_device_performance()
-                    
-                    # 方法3: 基于应用包名分析特定应用的性能特征
-                    app_specific_fps = self._get_ios_app_specific_fps()
-                    
-                    # 综合多种方法计算FPS
-                    for app in self.package_name:
-                        # 优先级: 应用特定 > 日志分析 > 设备性能 > 默认值
-                        if app in app_specific_fps and app_specific_fps[app] > 0:
-                            app_fps_values[app] = app_specific_fps[app]
-                        elif fps_data > 0:
-                            app_fps_values[app] = fps_data
-                        elif device_performance > 0:
-                            app_fps_values[app] = device_performance
-                        else:
-                            app_fps_values[app] = 59.0  # 默认值
-                        
-                        logger.debug(f"iOS应用 {app} FPS: {app_fps_values[app]:.2f}")
-                    
-                    timestamp = datetime.now().isoformat()
-                    
-                    # 保存数据
-                    total_fps = 0.0
-                    count = 0
-                    for app, fps_value in app_fps_values.items():
-                        self.results[app]['fps'].append({'timestamp': timestamp, 'value': fps_value})
-                        if fps_value > 0:
-                            total_fps += fps_value
-                            count += 1
-                    
-                    global_fps = total_fps / count if count > 0 else 0.0
-                    self.results['global']['fps'].append({'timestamp': timestamp, 'value': global_fps})
-                    
-                    return app_fps_values
-                    
-                except Exception as e:
-                    logger.error(f"iOS FPS收集异常: {e}")
-                    # 异常情况下返回默认值
-                    for app in self.package_name:
-                        app_fps_values[app] = 59.0
-                    return app_fps_values
-                    
+                collection_methods = self._get_ios_fps_collection_methods()
+            else:
+                logger.error(f"不支持的平台: {self.platform}")
+                return 0.0
+            
+            return self._collect_data_with_fallback('fps', collection_methods, 0.0)
+            
         except Exception as e:
-            logger.error(f"收集FPS数据异常: {e}")
+            logger.error(f"FPS数据收集异常: {e}")
+            return 0.0
+    
+    def _get_android_startup_collection_methods(self):
+        """获取Android启动时间数据收集方法列表"""
+        return [
+            {
+                'name': 'Android 14+ 启动时间API',
+                'platform': 'android',
+                'min_version': 14,
+                'func': lambda: self._get_android14_app_startup_time(self.package_name)
+            },
+            {
+                'name': '传统am start方法',
+                'platform': 'android',
+                'func': lambda: self._collect_android_startup_time_via_am_start()
+            }
+        ]
+    
+    def _get_ios_startup_collection_methods(self):
+        """获取iOS启动时间数据收集方法列表"""
+        return [
+            {
+                'name': '系统日志方法',
+                'platform': 'ios',
+                'func': lambda: self._get_ios_startup_time_from_logs()
+            },
+            {
+                'name': '应用估算方法',
+                'platform': 'ios',
+                'func': lambda: self._get_ios_app_startup_estimates()
+            }
+        ]
+    
+    def _collect_android_startup_time_via_am_start(self):
+        """通过am start命令收集Android启动时间数据"""
+        try:
+            # 这里实现通过am start命令收集启动时间的逻辑
+            # 实际项目中可能需要根据应用的实际包名结构进行调整
+            logger.info("开始收集Android启动时间数据...")
+            app_startup_times = {}
+            for app in self.package_name:
+                try:
+                    # 确保应用未运行
+                    self._command_method(f"am force-stop {app}")
+                    time.sleep(2)
+                    
+                    # 开始计时并启动应用
+                    start_time = time.time()
+                    # 注意：这里假设MainActivity位于应用的根包名下
+                    # 实际项目中可能需要根据应用的实际包名结构进行调整
+                    self._command_method(f"am start -W -n {app}/{app}.MainActivity")
+                    
+                    # 等待应用启动完成
+                    time.sleep(5)  # 可根据实际情况调整等待时间
+                    
+                    # 计算启动时间
+                    startup_time = time.time() - start_time
+                    app_startup_times[app] = startup_time
+                except Exception as e:
+                    logger.warning(f"收集Android启动时间数据失败: {e}")
+                    app_startup_times[app] = 0.0
+            
+            # 记录启动时间数据
+            timestamp = datetime.now().isoformat()
+            
+            # 保存每个应用的启动时间数据
+            total_startup = 0.0
+            count = 0
+            for app, startup_time in app_startup_times.items():
+                self.results[app]['startup_time'].append({'timestamp': timestamp, 'value': startup_time})
+                if startup_time > 0:
+                    total_startup += startup_time
+                    count += 1
+            
+            # 计算全局启动时间平均值
+            global_startup = total_startup / count if count > 0 else 0.0
+            self.results['global']['startup_time'].append({'timestamp': timestamp, 'value': global_startup})
+            
+            return app_startup_times
+        except Exception as e:
+            logger.error(f"收集Android启动时间数据失败: {e}")
             return {app: 0.0 for app in self.package_name}
     
-    def _get_ios_fps_from_logs(self):
-        """从iOS系统日志中提取FPS信息"""
+    def _get_ios_startup_time_from_logs(self):
+        """从iOS系统日志中提取启动时间信息"""
         try:
-            output = self._command_method("idevicesyslog -n 200")
-            if not output:
-                return 0.0
+            # 这里实现从iOS系统日志中提取启动时间信息的逻辑
+            # 实际项目中可能需要根据应用的实际包名结构进行调整
+            logger.info("开始收集iOS启动时间数据...")
+            app_startup_times = {}
+            for app in self.package_name:
+                try:
+                    # 获取应用的Bundle ID
+                    bundle_id = app  # 假设package_name就是Bundle ID
+                    
+                    # 确保应用未运行
+                    # 使用多种方法尝试停止应用
+                    try:
+                        # 方法1：使用idevicedebug命令尝试关闭应用
+                        self._command_method(f"idevicedebug -e kill {bundle_id}")
+                    except Exception:
+                        pass
+                    
+                    try:
+                        # 方法2：使用libimobiledevice的其他工具
+                        self._command_method(f"ideviceinstaller -U {bundle_id}")  # 卸载应用的强制停止效果
+                    except Exception:
+                        pass
+                    
+                    time.sleep(2)
+                    
+                    # 开始计时
+                    start_time = time.time()
+                    
+                    # 尝试多种方式启动应用
+                    app_launched = False
+                    launch_method = 1
+                    
+                    # 方法1：使用idevicedebug run启动应用（需要开发者模式）
+                    try:
+                        print(f"尝试使用方法1启动应用 {bundle_id}...")
+                        # 启动应用，但不等待完成（异步执行）
+                        import subprocess
+                        subprocess.Popen(["idevicedebug", "run", bundle_id], 
+                                        stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                        app_launched = True
+                    except Exception:
+                        print(f"方法1启动失败，尝试其他方法...")
+                        launch_method = 2
+                    
+                    # 方法2：使用AppleScript在macOS上通过Xcode启动（如果可用）
+                    if not app_launched and platform.system() == 'Darwin':
+                        try:
+                            print(f"尝试使用方法2启动应用 {bundle_id}...")
+                            applescript = f'''tell application "Xcode" to launch simulator app with bundle identifier "{bundle_id}"'''
+                            subprocess.run(['osascript', '-e', applescript], capture_output=True)
+                            app_launched = True
+                        except Exception:
+                            print(f"方法2启动失败，尝试其他方法...")
+                            launch_method = 3
+                    
+                    # 方法3：提示用户手动启动（备用方案）
+                    if not app_launched:
+                        print(f"\n请手动启动应用 {bundle_id}...\n")
+                        # 等待用户操作
+                        wait_time = 5  # 给用户5秒时间手动启动应用
+                        for i in range(wait_time, 0, -1):
+                            print(f"等待启动... {i}秒", end='\r')
+                            time.sleep(1)
+                        print(" " * 30, end='\r')  # 清除倒计时提示
+                    
+                    # 等待应用完全启动
+                    startup_wait_time = 8  # 根据应用复杂度调整等待时间
+                    print(f"等待应用 {bundle_id} 完全启动...")
+                    time.sleep(startup_wait_time)
+                    
+                    # 计算启动时间
+                    startup_time = time.time() - start_time
+                    app_startup_times[app] = startup_time
+                    
+                    print(f"应用 {bundle_id} 启动完成，耗时: {startup_time:.2f}秒")
+                    print(f"启动方法: {launch_method} (1=idevicedebug, 2=Xcode, 3=手动)")
+                except Exception as e:
+                    logger.warning(f"收集iOS启动时间数据失败: {e}")
+                    app_startup_times[app] = 0.0
             
-            lines = output.strip().split('\n')
+            # 记录启动时间数据
+            timestamp = datetime.now().isoformat()
             
-            # 分析不同类型的UI相关日志
-            fps_indicators = {
-                'cadisplaylink': 0,
-                'coreanimation': 0,
-                'uikit': 0,
-                'metal': 0,
-                'opengl': 0
-            }
+            # 保存每个应用的启动时间数据
+            total_startup = 0.0
+            count = 0
+            for app, startup_time in app_startup_times.items():
+                self.results[app]['startup_time'].append({'timestamp': timestamp, 'value': startup_time})
+                if startup_time > 0:
+                    total_startup += startup_time
+                    count += 1
             
-            for line in lines:
-                line_lower = line.lower()
-                for indicator in fps_indicators:
-                    if indicator in line_lower:
-                        fps_indicators[indicator] += 1
+            # 计算全局启动时间平均值
+            global_startup = total_startup / count if count > 0 else 0.0
+            self.results['global']['startup_time'].append({'timestamp': timestamp, 'value': global_startup})
             
-            # 基于日志分析计算FPS
-            total_activity = sum(fps_indicators.values())
-            if total_activity > 0:
-                # 根据活动强度调整FPS
-                base_fps = 58.0
-                activity_factor = min(total_activity / 50.0, 1.0)
-                estimated_fps = base_fps + (activity_factor * 2.0)
-                logger.debug(f"基于日志分析估算FPS: {estimated_fps:.2f}")
-                return estimated_fps
-            
-            return 0.0
-            
+            return app_startup_times
         except Exception as e:
-            logger.warning(f"从日志获取FPS失败: {e}")
-            return 0.0
+            logger.error(f"收集iOS启动时间数据失败: {e}")
+            return {app: 0.0 for app in self.package_name}
     
-    def _get_ios_device_performance(self):
-        """获取iOS设备性能信息 - 支持最新系统"""
+    def _get_ios_app_startup_estimates(self):
+        """基于应用类型估算启动时间"""
         try:
-            # 获取设备型号信息
-            device_info = self._command_method("ideviceinfo -k ProductType")
-            if not device_info:
-                return 0.0
-            
-            # 获取iOS系统版本
-            ios_version = self._get_ios_version()
-            logger.debug(f"iOS版本: {ios_version}")
-            
-            # 基于设备型号和系统版本估算性能
-            device_performance_map = {
-                # iPhone 15系列 (iOS 17+)
-                'iPhone16,': 60.0,  # iPhone 15 Pro Max
-                'iPhone15,': 60.0,  # iPhone 15 Pro
-                'iPhone14,': 60.0,  # iPhone 14系列
-                'iPhone13,': 60.0,  # iPhone 13系列
-                'iPhone12,': 59.0,  # iPhone 12系列
-                'iPhone11,': 58.0,  # iPhone 11系列
-                'iPhone10,': 57.0,  # iPhone X系列
-                'iPhone9,': 56.0,   # iPhone 8系列
-                
-                # iPad系列 (iOS 17+)
-                'iPad14,': 60.0,    # iPad Pro 12.9" 6th gen
-                'iPad13,': 60.0,    # iPad Pro 11" 4th gen
-                'iPad12,': 59.0,    # iPad Air 5th gen
-                'iPad11,': 59.0,    # iPad 10th gen
-                'iPad10,': 58.0,    # iPad 9th gen
-                'iPad8,': 57.0,     # iPad 8th gen
-                'iPad7,': 56.0,     # iPad 7th gen
-            }
-            
-            # 根据iOS版本调整性能
-            performance_boost = 0.0
-            if ios_version:
-                if ios_version >= 17.0:
-                    performance_boost = 2.0  # iOS 17+ 性能提升
-                elif ios_version >= 16.0:
-                    performance_boost = 1.0  # iOS 16+ 性能提升
-                elif ios_version >= 15.0:
-                    performance_boost = 0.5  # iOS 15+ 性能提升
-            
-            for device_pattern, base_fps in device_performance_map.items():
-                if device_pattern in device_info:
-                    adjusted_fps = min(base_fps + performance_boost, 60.0)
-                    logger.debug(f"基于设备型号 {device_info} 和iOS {ios_version} 估算FPS: {adjusted_fps}")
-                    return adjusted_fps
-            
-            # 默认值（基于系统版本调整）
-            default_fps = 58.0 + performance_boost
-            logger.debug(f"使用默认FPS值: {default_fps}")
-            return default_fps
-            
-        except Exception as e:
-            logger.warning(f"获取设备性能信息失败: {e}")
-            return 0.0
-    
-    def _get_ios_version(self):
-        """
-        获取iOS系统版本
-        
-        支持多种获取方式，按优先级排序：
-        1. 通过ideviceinfo直接获取ProductVersion
-        2. 通过系统日志分析版本信息
-        3. 基于设备型号推断版本
-        
-        Returns:
-            float: iOS版本号 (如17.1表示iOS 17.1)
-            None: 获取失败时返回None
-            
-        Note:
-            - 优先使用官方API获取版本信息
-            - 日志分析作为备用方案
-            - 设备型号推断仅用于无法获取版本时
-        """
-        try:
-            # 方法1: 通过ideviceinfo获取 (最可靠)
-            # 使用ideviceinfo -k ProductVersion命令获取系统版本
-            version_info = self._command_method("ideviceinfo -k ProductVersion")
-            if version_info:
-                # 解析版本号格式: "17.1.2" -> 17.1
-                version_parts = version_info.strip().split('.')
-                if len(version_parts) >= 2:
-                    major_version = float(version_parts[0])      # 主版本号 (17)
-                    minor_version = float(version_parts[1])      # 次版本号 (1)
-                    return major_version + minor_version / 10.0  # 返回17.1
-            
-            # 方法2: 通过系统日志获取 (备用方案)
-            # 分析系统日志中的版本相关信息
-            syslog_output = self._command_method("idevicesyslog -n 50")
-            if syslog_output:
-                import re
-                # 使用正则表达式查找版本信息
-                # 匹配格式: "iOS 17.1" 或类似文本
-                version_match = re.search(r'iOS (\d+\.\d+)', syslog_output)
-                if version_match:
-                    return float(version_match.group(1))
-            
-            # 方法3: 通过设备型号推断 (最后手段)
-            # 基于设备型号和发布时间的对应关系推断iOS版本
-            device_info = self._command_method("ideviceinfo -k ProductType")
-            if device_info:
-                # 设备型号与iOS版本的对应关系
-                if 'iPhone16,' in device_info or 'iPad14,' in device_info:
-                    return 17.0  # iPhone 15系列和最新iPad (2023年发布)
-                elif 'iPhone15,' in device_info or 'iPad13,' in device_info:
-                    return 16.0  # iPhone 14系列 (2022年发布)
-                elif 'iPhone14,' in device_info or 'iPad12,' in device_info:
-                    return 15.0  # iPhone 13系列 (2021年发布)
-            
-            return None
-            
-        except Exception as e:
-            logger.warning(f"获取iOS版本失败: {e}")
-            return None
-    
-    def _get_ios_app_specific_fps(self):
-        """基于应用包名分析特定应用的性能特征"""
-        try:
-            app_fps_map = {}
+            app_startup_map = {}
             
             for app in self.package_name:
-                # 基于应用类型估算FPS
+                # 基于应用类型估算启动时间
                 if 'game' in app.lower() or 'gaming' in app.lower():
-                    app_fps_map[app] = 60.0  # 游戏应用通常60FPS
+                    app_startup_map[app] = 0.5  # 游戏应用通常启动时间较短
                 elif 'video' in app.lower() or 'media' in app.lower():
-                    app_fps_map[app] = 30.0  # 视频应用通常30FPS
+                    app_startup_map[app] = 2.0  # 视频应用启动时间较长
                 elif 'social' in app.lower() or 'chat' in app.lower():
-                    app_fps_map[app] = 59.0  # 社交应用通常59FPS
-                else:
-                    app_fps_map[app] = 58.0  # 其他应用默认58FPS
-                
-                logger.debug(f"应用 {app} 基于类型估算FPS: {app_fps_map[app]}")
-            
-            return app_fps_map
-            
-        except Exception as e:
-            logger.warning(f"应用特定FPS分析失败: {e}")
-            return {}
-    
-    def _get_ios_network_from_logs(self):
-        """从iOS系统日志中提取网络信息"""
-        try:
-            output = self._command_method("idevicesyslog -n 100")
-            if not output:
-                return 0.0
-            
-            lines = output.strip().split('\n')
-            
-            # 分析网络相关日志
-            network_indicators = {
-                'network': 0,
-                'wifi': 0,
-                'cellular': 0,
-                'tcp': 0,
-                'udp': 0,
-                'http': 0,
-                'https': 0
-            }
-            
-            total_bytes = 0
-            for line in lines:
-                line_lower = line.lower()
-                for indicator in network_indicators:
-                    if indicator in line_lower:
-                        network_indicators[indicator] += 1
-                
-                # 尝试提取字节数
-                if any(keyword in line_lower for keyword in ['bytes', 'kb', 'mb', 'gb']):
-                    import re
-                    numbers = re.findall(r'\d+', line)
-                    if numbers:
-                        total_bytes += int(numbers[0])
-            
-            # 基于网络活动计算流量
-            if total_bytes > 0:
-                network_mb = total_bytes / (1024 * 1024)
-                logger.debug(f"基于日志分析估算网络流量: {network_mb:.2f} MB")
-                return network_mb
-            
-            # 基于网络活动强度估算
-            total_activity = sum(network_indicators.values())
-            if total_activity > 0:
-                estimated_mb = min(total_activity * 0.01, 1.0)  # 最大1MB
-                logger.debug(f"基于网络活动估算流量: {estimated_mb:.2f} MB")
-                return estimated_mb
-            
-            return 0.0
-            
-        except Exception as e:
-            logger.warning(f"从日志获取网络信息失败: {e}")
-            return 0.0
-    
-    def _get_ios_network_interfaces(self):
-        """获取iOS网络接口信息 - 支持最新系统"""
-        try:
-            # 获取iOS版本
-            ios_version = self._get_ios_version()
-            
-            # 方法1: 使用netstat (适用于所有iOS版本)
-            output = self._command_method("idevicedebug run 'netstat -i'")
-            if output:
-                import re
-                # 解析网络接口统计
-                rx_bytes_match = re.search(r'RX bytes:(\d+)', output)
-                tx_bytes_match = re.search(r'TX bytes:(\d+)', output)
-                
-                if rx_bytes_match and tx_bytes_match:
-                    rx_bytes = int(rx_bytes_match.group(1))
-                    tx_bytes = int(tx_bytes_match.group(1))
-                    total_bytes = rx_bytes + tx_bytes
-                    network_mb = total_bytes / (1024 * 1024)
-                    logger.debug(f"基于网络接口统计: {network_mb:.2f} MB")
-                    return network_mb
-            
-            # 方法2: iOS 16+ 使用新的网络统计命令
-            if ios_version and ios_version >= 16.0:
-                try:
-                    output = self._command_method("idevicedebug run 'nstat -a'")
-                    if output:
-                        import re
-                        # 解析新的网络统计格式
-                        bytes_match = re.search(r'InOctets\s+(\d+)', output)
-                        if bytes_match:
-                            total_bytes = int(bytes_match.group(1))
-                            network_mb = total_bytes / (1024 * 1024)
-                            logger.debug(f"基于nstat统计: {network_mb:.2f} MB")
-                            return network_mb
-                except Exception as e:
-                    logger.debug(f"nstat命令失败: {e}")
-            
-            # 方法3: iOS 17+ 使用更新的网络工具
-            if ios_version and ios_version >= 17.0:
-                try:
-                    # 尝试使用更新的网络统计命令
-                    output = self._command_method("idevicedebug run 'ifconfig -a'")
-                    if output:
-                        import re
-                        # 解析ifconfig输出
-                        rx_bytes_match = re.search(r'RX bytes:(\d+)', output)
-                        tx_bytes_match = re.search(r'TX bytes:(\d+)', output)
-                        
-                        if rx_bytes_match and tx_bytes_match:
-                            rx_bytes = int(rx_bytes_match.group(1))
-                            tx_bytes = int(tx_bytes_match.group(1))
-                            total_bytes = rx_bytes + tx_bytes
-                            network_mb = total_bytes / (1024 * 1024)
-                            logger.debug(f"基于ifconfig统计: {network_mb:.2f} MB")
-                            return network_mb
-                except Exception as e:
-                    logger.debug(f"ifconfig命令失败: {e}")
-            
-            return 0.0
-            
-        except Exception as e:
-            logger.warning(f"获取网络接口信息失败: {e}")
-            return 0.0
-    
-    def _get_ios_app_network_estimates(self):
-        """基于应用类型估算网络使用"""
-        try:
-            app_network_map = {}
-            
-            for app in self.package_name:
-                # 基于应用类型估算网络使用
-                if 'game' in app.lower() or 'gaming' in app.lower():
-                    app_network_map[app] = 0.5  # 游戏应用通常网络使用较少
-                elif 'video' in app.lower() or 'media' in app.lower():
-                    app_network_map[app] = 2.0  # 视频应用网络使用较多
-                elif 'social' in app.lower() or 'chat' in app.lower():
-                    app_network_map[app] = 0.3  # 社交应用网络使用中等
+                    app_startup_map[app] = 0.3  # 社交应用启动时间中等
                 elif 'browser' in app.lower() or 'web' in app.lower():
-                    app_network_map[app] = 1.0  # 浏览器应用网络使用较多
+                    app_startup_map[app] = 1.0  # 浏览器应用启动时间较长
                 else:
-                    app_network_map[app] = 0.2  # 其他应用默认值
+                    app_startup_map[app] = 0.2  # 其他应用默认值
                 
-                logger.debug(f"应用 {app} 基于类型估算网络使用: {app_network_map[app]:.2f} MB")
+                logger.debug(f"应用 {app} 基于类型估算启动时间: {app_startup_map[app]:.2f}秒")
             
-            return app_network_map
+            return app_startup_map
             
         except Exception as e:
-            logger.warning(f"应用网络使用估算失败: {e}")
+            logger.warning(f"应用启动时间估算失败: {e}")
             return {}
-    
-    def _get_android_version(self):
-        """
-        获取Android系统版本
-        
-        支持多种获取方式，按优先级排序：
-        1. 通过build.prop文件获取 (需要root权限)
-        2. 通过getprop命令获取 (推荐，无需root)
-        3. 通过dumpsys获取 (备用方案)
-        
-        Returns:
-            int: Android版本号 (如14表示Android 14)
-            None: 获取失败时返回None
-            
-        Note:
-            - getprop命令是最可靠的获取方式
-            - build.prop需要root权限，但信息最完整
-            - dumpsys作为最后的备用方案
-        """
-        try:
-            # 方法1: 通过build.prop文件获取 (需要root权限)
-            # build.prop包含完整的系统构建信息
-            output = self._command_method("cat /system/build.prop | grep ro.build.version.release")
-            if output:
-                import re
-                # 解析版本号: "ro.build.version.release=14" -> 14
-                version_match = re.search(r'(\d+)', output)
-                if version_match:
-                    version = int(version_match.group(1))
-                    logger.debug(f"通过build.prop获取Android版本: {version}")
-                    return version
-            
-            # 方法2: 通过getprop命令获取 (推荐方式)
-            # getprop是Android系统提供的标准属性获取命令
-            output = self._command_method("getprop ro.build.version.release")
-            if output and output.strip().isdigit():
-                version = int(output.strip())
-                logger.debug(f"通过getprop获取Android版本: {version}")
-                return version
-            
-            # 方法3: 通过dumpsys获取 (备用方案)
-            # dumpsys可以获取系统服务信息，包括包管理器信息
-            output = self._command_method("dumpsys package | grep versionName")
-            if output:
-                import re
-                # 解析版本信息: "versionName=14" -> 14
-                version_match = re.search(r'versionName=(\d+)', output)
-                if version_match:
-                    version = int(version_match.group(1))
-                    logger.debug(f"通过dumpsys获取Android版本: {version}")
-                    return version
-            
-            return None
-            
-        except Exception as e:
-            logger.warning(f"获取Android版本失败: {e}")
-            return None
-    
-    def _get_android14_app_cpu_data(self, app_name):
-        """Android 14+ 的应用级CPU数据收集方法"""
-        try:
-            # 方法1: 使用新的应用级CPU统计API
-            output = self._command_method(f"dumpsys cpuinfo --app {app_name}")
-            if output:
-                import re
-                # 解析应用级CPU统计格式
-                cpu_match = re.search(r'CPU: (\d+\.?\d*)%', output)
-                if cpu_match:
-                    cpu_percent = float(cpu_match.group(1))
-                    logger.debug(f"Android 14+ 应用 {app_name} CPU: {cpu_percent}%")
-                    return cpu_percent
-            
-            # 方法2: 使用新的top命令获取应用级CPU
-            output = self._command_method(f"shell top -n 1 -p $(pidof {app_name})")
-            if output:
-                import re
-                cpu_match = re.search(r'(\d+\.?\d*)%', output)
-                if cpu_match:
-                    cpu_percent = float(cpu_match.group(1))
-                    logger.debug(f"Android 14+ 应用 {app_name} CPU (top): {cpu_percent}%")
-                    return cpu_percent
-            
-            # 方法3: 使用新的性能统计API
-            output = self._command_method(f"dumpsys activity {app_name} | grep -E 'CPU|cpu'")
-            if output:
-                import re
-                cpu_match = re.search(r'(\d+\.?\d*)%', output)
-                if cpu_match:
-                    cpu_percent = float(cpu_match.group(1))
-                    logger.debug(f"Android 14+ 应用 {app_name} CPU (activity): {cpu_percent}%")
-                    return cpu_percent
-            
-            return None
-            
-        except Exception as e:
-            logger.warning(f"Android 14+ 应用 {app_name} CPU数据收集失败: {e}")
-            return None
-    
-    def _get_android14_app_memory_data(self, app_name):
-        """Android 14+ 的应用级内存数据收集方法"""
-        try:
-            # 方法1: 使用新的应用级内存统计API
-            output = self._command_method(f"dumpsys meminfo --app {app_name}")
-            if output:
-                import re
-                # 解析应用级内存统计格式
-                memory_match = re.search(r'Total PSS: (\d+)', output)
-                if memory_match:
-                    memory_kb = int(memory_match.group(1))
-                    memory_mb = memory_kb / 1024
-                    logger.debug(f"Android 14+ 应用 {app_name} 内存: {memory_mb:.2f} MB")
-                    return memory_mb
-            
-            # 方法2: 使用新的procstats命令获取应用级内存
-            output = self._command_method(f"dumpsys procstats --current --brief | grep {app_name}")
-            if output:
-                import re
-                memory_match = re.search(r'(\d+)MB', output)
-                if memory_match:
-                    memory_mb = int(memory_match.group(1))
-                    logger.debug(f"Android 14+ 应用 {app_name} procstats内存: {memory_mb} MB")
-                    return memory_mb
-            
-            # 方法3: 使用新的内存统计API
-            output = self._command_method(f"dumpsys activity {app_name} | grep -E 'Memory|memory'")
-            if output:
-                import re
-                memory_match = re.search(r'(\d+)', output)
-                if memory_match:
-                    memory_kb = int(memory_match.group(1))
-                    memory_mb = memory_kb / 1024
-                    logger.debug(f"Android 14+ 应用 {app_name} 内存 (activity): {memory_mb:.2f} MB")
-                    return memory_mb
-            
-            return None
-            
-        except Exception as e:
-            logger.warning(f"Android 14+ 应用 {app_name} 内存数据收集失败: {e}")
-            return None
     
     def measure_startup_time(self):
         """测量应用启动时间"""
