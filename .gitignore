@@ -1,0 +1,86 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# Virtual environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+.DS_Store?
+._*
+.Spotlight-V100
+.Trashes
+ehthumbs.db
+Thumbs.db
+
+# Logs
+*.log
+logs/
+
+# Test files
+test_*.py
+*_test.py
+*_demo.py
+
+# Temporary files
+*.tmp
+*.temp
+*.bak
+*.backup
+
+# Configuration files (keep only essential ones)
+config_*.json
+!desktop_platform_config.json
+!app_test_config.json
+!system_compatibility.json
+
+# Output directories
+output/
+results/
+charts/
+interactive_reports/
+
+# Performance data
+*.json
+!requirements.txt
+!desktop_platform_config.json
+!app_test_config.json
+!system_compatibility.json
+
+# Documentation (keep only essential ones)
+*_SUMMARY.md
+*_GUIDE.md
+*_IMPROVEMENTS.md

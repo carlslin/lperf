@@ -1,0 +1,121 @@
+{
+    "test_config": {
+        "name": "应用性能测试配置",
+        "description": "针对特定应用的性能测试配置",
+        "version": "1.0"
+    },
+    "applications": [
+        {
+            "name": "主应用",
+            "package_name": "com.example.mainapp",
+            "platform": "android",
+            "test_scenarios": [
+                {
+                    "name": "冷启动测试",
+                    "description": "测试应用从完全关闭状态启动的性能",
+                    "duration": 30,
+                    "metrics": ["cpu", "memory", "startup_time", "fps"]
+                },
+                {
+                    "name": "正常使用测试",
+                    "description": "测试应用在正常使用场景下的性能",
+                    "duration": 120,
+                    "metrics": ["cpu", "memory", "battery", "network", "fps"]
+                },
+                {
+                    "name": "压力测试",
+                    "description": "测试应用在高负载下的性能表现",
+                    "duration": 60,
+                    "metrics": ["cpu", "memory", "fps"],
+                    "load_factor": 2.0
+                }
+            ]
+        },
+        {
+            "name": "游戏应用",
+            "package_name": "com.example.game",
+            "platform": "android",
+            "test_scenarios": [
+                {
+                    "name": "游戏启动测试",
+                    "description": "测试游戏启动性能",
+                    "duration": 45,
+                    "metrics": ["cpu", "memory", "startup_time", "fps"]
+                },
+                {
+                    "name": "游戏运行测试",
+                    "description": "测试游戏运行时的性能",
+                    "duration": 180,
+                    "metrics": ["cpu", "memory", "battery", "fps"],
+                    "fps_target": 60
+                }
+            ]
+        }
+    ],
+    "ios_applications": [
+        {
+            "name": "iOS主应用",
+            "bundle_id": "com.example.iosapp",
+            "platform": "ios",
+            "test_scenarios": [
+                {
+                    "name": "iOS冷启动测试",
+                    "description": "测试iOS应用启动性能",
+                    "duration": 40,
+                    "metrics": ["cpu", "memory", "startup_time", "fps"]
+                },
+                {
+                    "name": "iOS性能监控",
+                    "description": "监控iOS应用运行性能",
+                    "duration": 300,
+                    "metrics": ["cpu", "memory", "battery", "network", "fps"]
+                }
+            ]
+        }
+    ],
+    "test_settings": {
+        "data_collection": {
+            "interval": 1.0,
+            "timeout": 30,
+            "retry_count": 3
+        },
+        "performance_thresholds": {
+            "cpu": {
+                "warning": 60.0,
+                "critical": 80.0
+            },
+            "memory": {
+                "warning": 500.0,
+                "critical": 1000.0
+            },
+            "fps": {
+                "warning": 30.0,
+                "critical": 20.0
+            },
+            "startup_time": {
+                "warning": 5.0,
+                "critical": 10.0
+            }
+        },
+        "reporting": {
+            "generate_charts": true,
+            "generate_interactive_report": true,
+            "export_formats": ["json", "csv", "html"],
+            "save_raw_data": true
+        }
+    },
+    "platform_specific": {
+        "android": {
+            "use_root": false,
+            "grant_permissions": true,
+            "enable_advanced_monitoring": true,
+            "api_level": 14
+        },
+        "ios": {
+            "developer_mode": false,
+            "use_instruments": false,
+            "enable_system_logs": true,
+            "ios_version": "15.0+"
+        }
+    }
+}

@@ -1,0 +1,139 @@
+{
+    "ios_support": {
+        "ios_17": {
+            "version": "17.0+",
+            "features": {
+                "cpu_monitoring": "enhanced",
+                "memory_monitoring": "enhanced",
+                "network_monitoring": "enhanced",
+                "fps_monitoring": "estimated",
+                "battery_monitoring": "enhanced"
+            },
+            "commands": {
+                "cpu": ["idevicedebug run 'top -l 1 -n 0'", "ideviceinfo -k ProductVersion"],
+                "memory": ["ideviceinfo -k MemoryUsage", "idevicedebug run 'top -l 1 -n 0'"],
+                "network": ["idevicesyslog -n 200", "idevicedebug run 'netstat -i'", "idevicedebug run 'ifconfig -a'"],
+                "fps": ["idevicesyslog -n 200", "ideviceinfo -k ProductType"],
+                "battery": ["ideviceinfo -k BatteryCurrentCapacity", "ideviceinfo | grep -A 5 Battery"]
+            },
+            "performance_boost": 2.0
+        },
+        "ios_16": {
+            "version": "16.0-16.9",
+            "features": {
+                "cpu_monitoring": "enhanced",
+                "memory_monitoring": "enhanced",
+                "network_monitoring": "enhanced",
+                "fps_monitoring": "estimated",
+                "battery_monitoring": "enhanced"
+            },
+            "commands": {
+                "cpu": ["idevicedebug run 'top -l 1 -n 0'", "ideviceinfo -k ProductVersion"],
+                "memory": ["ideviceinfo -k MemoryUsage", "idevicedebug run 'top -l 1 -n 0'"],
+                "network": ["idevicesyslog -n 200", "idevicedebug run 'netstat -i'", "idevicedebug run 'nstat -a'"],
+                "fps": ["idevicesyslog -n 200", "ideviceinfo -k ProductType"],
+                "battery": ["ideviceinfo -k BatteryCurrentCapacity", "ideviceinfo | grep -A 5 Battery"]
+            },
+            "performance_boost": 1.0
+        },
+        "ios_15": {
+            "version": "15.0-15.9",
+            "features": {
+                "cpu_monitoring": "standard",
+                "memory_monitoring": "standard",
+                "network_monitoring": "standard",
+                "fps_monitoring": "estimated",
+                "battery_monitoring": "standard"
+            },
+            "commands": {
+                "cpu": ["idevicedebug run 'top -l 1 -n 0'"],
+                "memory": ["ideviceinfo -k MemoryUsage"],
+                "network": ["idevicesyslog -n 100"],
+                "fps": ["idevicesyslog -n 100"],
+                "battery": ["ideviceinfo -k BatteryCurrentCapacity"]
+            },
+            "performance_boost": 0.5
+        }
+    },
+    "android_support": {
+        "android_14": {
+            "version": "14.0+",
+            "features": {
+                "cpu_monitoring": "enhanced",
+                "memory_monitoring": "enhanced",
+                "network_monitoring": "enhanced",
+                "fps_monitoring": "enhanced",
+                "battery_monitoring": "enhanced"
+            },
+            "commands": {
+                "cpu": ["dumpsys cpuinfo --total", "top -n 1 | grep -E 'CPU:|%CPU'", "dumpsys cpuinfo | grep {package_name}"],
+                "memory": ["dumpsys meminfo --total", "dumpsys procstats --current --brief", "cat /proc/meminfo | grep MemTotal", "dumpsys meminfo {package_name}"],
+                "network": ["dumpsys traffic | grep {package_name}", "dumpsys netstats detail"],
+                "fps": ["dumpsys gfxinfo {package_name} --latency SurfaceView", "dumpsys SurfaceFlinger --latency"],
+                "battery": ["dumpsys battery", "dumpsys power"]
+            },
+            "api_level": 34
+        },
+        "android_13": {
+            "version": "13.0-13.9",
+            "features": {
+                "cpu_monitoring": "enhanced",
+                "memory_monitoring": "enhanced",
+                "network_monitoring": "enhanced",
+                "fps_monitoring": "enhanced",
+                "battery_monitoring": "enhanced"
+            },
+            "commands": {
+                "cpu": ["dumpsys cpuinfo | grep {package_name}", "top -n 1"],
+                "memory": ["dumpsys meminfo {package_name}", "dumpsys procstats"],
+                "network": ["dumpsys traffic | grep {package_name}", "dumpsys netstats"],
+                "fps": ["dumpsys gfxinfo {package_name} --latency SurfaceView"],
+                "battery": ["dumpsys battery", "dumpsys power"]
+            },
+            "api_level": 33
+        },
+        "android_12": {
+            "version": "12.0-12.9",
+            "features": {
+                "cpu_monitoring": "standard",
+                "memory_monitoring": "standard",
+                "network_monitoring": "standard",
+                "fps_monitoring": "standard",
+                "battery_monitoring": "standard"
+            },
+            "commands": {
+                "cpu": ["dumpsys cpuinfo | grep {package_name}"],
+                "memory": ["dumpsys meminfo {package_name}"],
+                "network": ["dumpsys traffic | grep {package_name}"],
+                "fps": ["dumpsys gfxinfo {package_name} --latency SurfaceView"],
+                "battery": ["dumpsys battery"]
+            },
+            "api_level": 31
+        }
+    },
+    "compatibility_notes": {
+        "ios": {
+            "limitations": [
+                "应用级网络流量监控受限",
+                "FPS数据需要估算",
+                "某些功能需要开发者模式"
+            ],
+            "recommendations": [
+                "使用最新版本的libimobiledevice",
+                "确保设备信任计算机",
+                "启用开发者模式以获得更好支持"
+            ]
+        },
+        "android": {
+            "limitations": [
+                "某些命令需要root权限",
+                "新版本系统可能有API变化"
+            ],
+            "recommendations": [
+                "使用最新版本的ADB工具",
+                "确保USB调试已启用",
+                "对于Android 14+，使用新的统计命令"
+            ]
+        }
+    }
+}
