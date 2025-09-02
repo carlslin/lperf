@@ -752,112 +752,166 @@ class LPerf:
         
         return ""
     
-    def collect_cpu_data(self):
-        """收集CPU使用率数据 - 增强稳定性版本"""
-        try:
-            if self.platform == 'android':
-                # 获取Android系统版本
-                android_version = self._get_android_version()
-                logger.debug(f"Android版本: {android_version}")
-                
-                # 根据Android版本选择不同的CPU数据收集方法
-                if android_version and android_version >= 14:
-                    # Android 14+ 使用新的CPU统计方法
-                    try:
-                        cpu_data = self._get_android14_app_cpu_data(app)
-                        if cpu_data is not None:
-                            return cpu_data
-                    except Exception as e:
-                        logger.warning(f"Android 14+ CPU数据收集失败: {e}")
-                
-                # 传统方法 (适用于所有Android版本)
-                try:
-                    output = self._command_method(f"dumpsys cpuinfo | grep {self.package_name}")
-                    if output:
-                        # 解析CPU使用率
-                        # 示例输出: "  5.2% 1234:com.example.app/ (pid 1234)"
-                        cpu_info = output.strip().split()
-                        if cpu_info and len(cpu_info) > 0:
-                            cpu_usage = cpu_info[0].replace('%', '')
-                            try:
-                                cpu_percent = float(cpu_usage)
-                                timestamp = datetime.now().isoformat()
-                                self.results['cpu'].append({'timestamp': timestamp, 'value': cpu_percent})
-                                logger.debug(f"收集到CPU数据: {cpu_percent}%")
-                                return cpu_percent
-                            except ValueError as e:
-                                logger.warning(f"CPU数据解析失败: {cpu_usage}, 错误: {e}")
-                                pass
-                    else:
-                        logger.debug("未获取到CPU数据")
-                except Exception as e:
-                    logger.warning(f"传统CPU数据收集失败: {e}")
-                
-                # 如果所有方法都失败，返回默认值
-                logger.warning("CPU数据收集失败，使用默认值0.0")
-                return 0.0
-                
-            elif self.platform == 'ios':
-                # iOS平台获取CPU使用率
-                # 技术说明：iOS平台获取应用级CPU使用率需要更复杂的方法
-                # 以下实现使用top命令作为示例，但实际项目中可能需要使用instruments或XCTest框架
-                try:
-                    # 使用top命令获取所有进程的CPU使用率
-                    output = self._command_method(f"idevicedebug run 'top -l 1 -n 0'")
-                    if output:
-                        # 按应用维度解析CPU使用率
-                        app_cpu_usage = {app: 0.0 for app in self.package_name}
-                        lines = output.strip().split('\n')
-                        
-                        for line in lines:
-                            line = line.strip()
-                            for app in self.package_name:
-                                if app in line:
-                                    parts = line.split()
-                                    if len(parts) > 2:
-                                        try:
-                                            # 假设CPU使用率在第二列
-                                            cpu_usage_str = parts[2].replace('%', '')
-                                            cpu_percent = float(cpu_usage_str)
-                                            app_cpu_usage[app] = cpu_percent
-                                        except (IndexError, ValueError):
-                                            pass
-                                        break
-                        
-                        timestamp = datetime.now().isoformat()
-                        
-                        # 保存每个应用的CPU使用率
-                        total_cpu = 0.0
-                        count = 0
-                        for app, cpu_percent in app_cpu_usage.items():
-                            self.results[app]['cpu'].append({'timestamp': timestamp, 'value': cpu_percent})
-                            if cpu_percent > 0:
-                                total_cpu += cpu_percent
-                                count += 1
-                        
-                        # 计算全局CPU使用率平均值
-                        global_cpu = total_cpu / count if count > 0 else 0.0
-                        self.results['global']['cpu'].append({'timestamp': timestamp, 'value': global_cpu})
-                        
-                        return app_cpu_usage
-                    
-                    # 如果无法获取CPU使用率，记录0值
-                    timestamp = datetime.now().isoformat()
-                    for app in self.package_name:
-                        self.results[app]['cpu'].append({'timestamp': timestamp, 'value': 0.0})
-                    self.results['global']['cpu'].append({'timestamp': timestamp, 'value': 0.0})
-                    return {app: 0.0 for app in self.package_name}
-                except Exception:
-                    # 异常情况下返回0值
-                    return {app: 0.0 for app in self.package_name}
+    def _collect_data_with_fallback(self, metric_name, collection_methods, default_value=0.0):
+        """
+        通用数据收集方法，支持多种收集策略和降级处理
+        
+        Args:
+            metric_name (str): 指标名称
+            collection_methods (list): 收集方法列表，每个方法是一个字典
+            default_value: 默认值
             
-
+        Returns:
+            收集到的数据或默认值
+        """
+        for method in collection_methods:
+            try:
+                method_name = method.get('name', 'unknown')
+                logger.debug(f"尝试使用 {method_name} 收集 {metric_name} 数据")
+                
+                if method['platform'] == self.platform or method['platform'] == 'all':
+                    # 检查版本要求
+                    if 'min_version' in method:
+                        if self.platform == 'android':
+                            android_version = self._get_android_version()
+                            if not android_version or android_version < method['min_version']:
+                                continue
+                        elif self.platform == 'ios':
+                            ios_version = self._get_ios_version()
+                            if not ios_version or ios_version < method['min_version']:
+                                continue
+                    
+                    # 执行收集方法
+                    result = method['func']()
+                    if result is not None:
+                        # 保存数据
+                        self._save_metric_data(metric_name, result)
+                        logger.debug(f"{method_name} 成功收集 {metric_name} 数据: {result}")
+                        return result
+                        
+            except Exception as e:
+                logger.warning(f"{method_name} 收集 {metric_name} 数据失败: {e}")
+                continue
+        
+        # 所有方法都失败，使用默认值
+        logger.warning(f"{metric_name} 数据收集失败，使用默认值 {default_value}")
+        self._save_metric_data(metric_name, default_value)
+        return default_value
+    
+    def _save_metric_data(self, metric_name, value):
+        """保存指标数据到结果中"""
+        try:
+            timestamp = datetime.now().isoformat()
+            
+            if isinstance(value, dict):
+                # 多应用数据
+                for app, app_value in value.items():
+                    if app in self.results:
+                        self.results[app][metric_name].append({'timestamp': timestamp, 'value': app_value})
+                
+                # 计算全局平均值
+                valid_values = [v for v in value.values() if v > 0]
+                if valid_values:
+                    global_value = sum(valid_values) / len(valid_values)
+                    self.results['global'][metric_name].append({'timestamp': timestamp, 'value': global_value})
             else:
-                logger.warning(f"不支持的平台: {self.platform}")
-                return None
+                # 单值数据
+                if isinstance(self.package_name, list):
+                    for app in self.package_name:
+                        if app in self.results:
+                            self.results[app][metric_name].append({'timestamp': timestamp, 'value': value})
+                else:
+                    self.results[metric_name].append({'timestamp': timestamp, 'value': value})
+                
+                # 全局数据
+                self.results['global'][metric_name].append({'timestamp': timestamp, 'value': value})
                 
         except Exception as e:
-            logger.error(f"收集CPU数据异常: {e}")
+            logger.error(f"保存 {metric_name} 数据失败: {e}")
+    
+    def _get_android_cpu_collection_methods(self):
+        """获取Android CPU数据收集方法列表"""
+        return [
+            {
+                'name': 'Android 14+ CPU API',
+                'platform': 'android',
+                'min_version': 14,
+                'func': lambda: self._get_android14_app_cpu_data(self.package_name)
+            },
+            {
+                'name': '传统dumpsys方法',
+                'platform': 'android',
+                'func': lambda: self._collect_android_cpu_via_dumpsys()
+            }
+        ]
+    
+    def _get_ios_cpu_collection_methods(self):
+        """获取iOS CPU数据收集方法列表"""
+        return [
+            {
+                'name': 'top命令方法',
+                'platform': 'ios',
+                'func': lambda: self._collect_ios_cpu_via_top()
+            }
+        ]
+    
+    def _collect_android_cpu_via_dumpsys(self):
+        """通过dumpsys收集Android CPU数据"""
+        try:
+            output = self._command_method(f"dumpsys cpuinfo | grep {self.package_name}")
+            if output:
+                cpu_info = output.strip().split()
+                if cpu_info and len(cpu_info) > 0:
+                    cpu_usage = cpu_info[0].replace('%', '')
+                    return float(cpu_usage)
+            return None
+        except Exception as e:
+            logger.warning(f"dumpsys CPU收集失败: {e}")
+            return None
+    
+    def _collect_ios_cpu_via_top(self):
+        """通过top命令收集iOS CPU数据"""
+        try:
+            output = self._command_method(f"idevicedebug run 'top -l 1 -n 0'")
+            if output:
+                app_cpu_usage = {app: 0.0 for app in self.package_name}
+                lines = output.strip().split('\n')
+                
+                for line in lines:
+                    line = line.strip()
+                    for app in self.package_name:
+                        if app in line:
+                            parts = line.split()
+                            if len(parts) > 2:
+                                try:
+                                    cpu_usage_str = parts[2].replace('%', '')
+                                    cpu_percent = float(cpu_usage_str)
+                                    app_cpu_usage[app] = cpu_percent
+                                except (IndexError, ValueError):
+                                    pass
+                                break
+                
+                return app_cpu_usage
+            return None
+        except Exception as e:
+            logger.warning(f"top命令CPU收集失败: {e}")
+            return None
+    
+    def collect_cpu_data(self):
+        """收集CPU使用率数据 - 重构优化版本"""
+        try:
+            if self.platform == 'android':
+                collection_methods = self._get_android_cpu_collection_methods()
+            elif self.platform == 'ios':
+                collection_methods = self._get_ios_cpu_collection_methods()
+            else:
+                logger.error(f"不支持的平台: {self.platform}")
+                return 0.0
+            
+            return self._collect_data_with_fallback('cpu', collection_methods, 0.0)
+            
+        except Exception as e:
+            logger.error(f"CPU数据收集异常: {e}")
             return 0.0
     
     def collect_memory_data(self):
