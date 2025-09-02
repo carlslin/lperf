@@ -7,9 +7,9 @@
 - **稳定性高**：采用模块化设计，各功能模块独立运行，降低耦合度，提高系统稳定性
 - **性能占用低**：采用轻量级数据采集方式，减少对被测设备的性能影响
 - **自研开发**：完全自主开发，可根据需求灵活定制和扩展
-- **兼容性好**：支持Android、iOS平台，适配多种机型和系统版本
+- **兼容性好**：支持Android 8-16+和iOS 10-18+，适配多种机型和系统版本
 - **多维度指标**：支持CPU、内存、电池、网络流量、FPS帧率、启动时间等多维度性能指标采集
-- **多设备并行测试**：支持同时对多台设备进行并行性能测试，提高测试效率
+- **多应用并行测试**：支持同时对多个应用进行并行性能测试，提高测试效率
 - **可视化报告**：生成静态图表和交互式HTML报告，直观展示性能数据
 
 ## 功能
@@ -24,39 +24,51 @@
 - **测试结果保存**：将测试数据保存为JSON格式，便于后续分析
 - **测试报告生成**：自动生成测试摘要报告
 - **图形化测试报告**：自动生成静态图表和交互式HTML报告，包含CPU、内存、电池等指标的可视化展示
-- **多设备并行测试**：支持同时对多台设备进行并行性能测试，提高测试效率
+- **多应用并行测试**：支持同时对多个应用进行并行性能测试，提高测试效率
+
+## 版本兼容性说明
+
+### 支持的版本范围
+- **Android**: 8.0 (API 26) - 16.0+ (API 34+)
+- **iOS**: 10.0 - 18.0+
+
+### 兼容性策略
+- **基础功能**: 所有版本都支持核心性能指标采集
+- **增强功能**: 新版本系统提供更多API和优化选项
+- **降级处理**: 旧版本系统自动使用兼容的命令和方法
+- **智能检测**: 自动识别系统版本并选择最佳采集策略
 
 ## 平台支持详解
 
 ### Android平台
 - **CPU监控**：
-  - 命令：`dumpsys cpuinfo | grep {package_name}` (Android 12-13)
+  - 命令：`dumpsys cpuinfo | grep {package_name}` (Android 8-13)
   - 新命令：`dumpsys cpuinfo --total` (Android 14+)
   - 实现原理：解析输出结果中的CPU使用率百分比
   - 输出示例："  5.2% 1234:com.example.app/ (pid 1234)"
-  - 新版本支持：Android 14+ 使用增强的CPU统计API
+  - 版本支持：Android 8-13使用基础命令，Android 14+使用增强API
 
 - **内存监控**：
-  - 命令：`dumpsys meminfo {package_name}` (Android 12-13)
+  - 命令：`dumpsys meminfo {package_name}` (Android 8-13)
   - 新命令：`dumpsys meminfo --total` (Android 14+)
   - 实现原理：查找"TOTAL PSS:"行，将KB转换为MB单位
   - 输出示例："TOTAL PSS:  123456 kB"
-  - 新版本支持：Android 14+ 支持procstats和/proc/meminfo
+  - 版本支持：Android 8-13使用基础命令，Android 14+支持procstats和/proc/meminfo
 
 - **电池监控**：
   - 命令：`dumpsys battery`
   - 实现原理：从输出中提取"level"字段的值
   - 数据类型：设备级指标，所有应用共享相同数据
-  - 新版本支持：Android 14+ 支持`dumpsys power`命令
+  - 版本支持：Android 8-13使用基础命令，Android 14+支持`dumpsys power`命令
 
 - **网络流量**：
   - 命令：`dumpsys traffic | grep {package_name}`
   - 实现原理：提取前台和后台流量数据，转换为MB单位
   - 输出示例："com.example.app\tForeground: 12345678\tBackground: 87654321"
-  - 新版本支持：Android 14+ 支持`dumpsys netstats detail`
+  - 版本支持：Android 8-13使用基础命令，Android 14+支持`dumpsys netstats detail`
 
 - **FPS帧率**：
-  - 命令：`dumpsys gfxinfo {package_name} --latency SurfaceView`
+  - 命令：`dumpsys gfxinfo {package_name} --latency SurfaceView` (Android 8-13)
   - 新命令：`dumpsys SurfaceFlinger --latency` (Android 14+)
   - 实现原理：分析每一帧的绘制时间（毫秒），计算平均帧率
   - 数据处理：1000ms / 平均帧时间 = FPS值
@@ -68,8 +80,8 @@
   - 等待时间：启动后等待5秒确保应用完全加载
 
 ### Android版本支持矩阵
-| 功能 | Android 12 | Android 13 | Android 14+ |
-|------|------------|------------|-------------|
+| 功能 | Android 8-11 | Android 12-13 | Android 14+ |
+|------|--------------|---------------|-------------|
 | CPU监控 | ✅ 基础 | ✅ 增强 | ✅ 最新API |
 | 内存监控 | ✅ 基础 | ✅ 增强 | ✅ 最新API |
 | 网络监控 | ✅ 基础 | ✅ 增强 | ✅ 最新API |
@@ -81,7 +93,7 @@
   - 命令：`idevicedebug run 'top -l 1 -n 0'`
   - 实现原理：从top命令输出中查找应用相关行，提取CPU使用率
   - 数据处理：支持多应用维度的CPU使用率采集和记录
-  - 新版本支持：iOS 17+ 使用增强的top命令和系统API
+  - 版本支持：iOS 10-16使用基础命令，iOS 17+使用增强API
 
 - **内存监控**：
   - 方法1：`ideviceinfo -k MemoryUsage`（基础方法）
@@ -94,7 +106,7 @@
     - 适用场景：获取特定应用的详细内存使用情况
   - 实现原理：从输出中提取内存使用量，转换为MB单位
   - 输出示例解析：识别类似"123.4M"的内存表示
-  - 新版本支持：iOS 16+ 支持更详细的内存统计
+  - 版本支持：iOS 10-15使用基础方法，iOS 16+支持更详细的内存统计
 
 - **电池监控**：
   - 方法1：`ideviceinfo -k BatteryCurrentCapacity`（直接获取电量）
@@ -113,7 +125,7 @@
       ```
     - 适用场景：获取详细的电池状态信息
   - 数据类型：设备级指标，所有应用共享相同数据
-  - 新版本支持：iOS 17+ 支持更精确的电池监控
+  - 版本支持：iOS 10-16使用基础方法，iOS 17+支持更精确的电池监控
 
 - **网络流量**：
   - 方法1：`idevicesyslog -n 200`（适用于所有iOS设备）
@@ -125,7 +137,7 @@
       ```
     - 实现原理：分析网络相关日志，提取流量信息
     - 适用场景：适用于所有iOS版本，通过日志分析获取网络状态
-  - 方法2：`idevicedebug run 'netstat -i'`（适用于iOS 16+）
+  - 方法2：`idevicedebug run 'netstat -i'`（适用于iOS 10+）
     - 命令示例：`idevicedebug run 'netstat -i'`
     - 输出格式：
       ```
@@ -134,7 +146,7 @@
       en0   1500  <Link#2>     xx:xx:xx:xx:xx:xx  12345    0   12345678   12345    0   87654321     0
       ```
     - 实现原理：解析网络接口统计信息
-    - 适用场景：iOS 16+设备，获取详细的网络接口统计
+    - 适用场景：iOS 10+设备，获取详细的网络接口统计
   - 方法3：`idevicedebug run 'ifconfig -a'`（适用于iOS 17+）
     - 命令示例：`idevicedebug run 'ifconfig -a'`
     - 输出格式：
@@ -154,7 +166,7 @@
   - 命令：`idevicesyslog -n 200`
   - 实现原理：分析与UI渲染相关的日志信息（如fps、display、animation、render等关键字）
   - 智能估算：基于设备型号、iOS版本和应用类型进行智能FPS估算
-  - 新版本支持：iOS 17+ 支持更准确的性能估算算法
+  - 版本支持：iOS 10-16使用基础算法，iOS 17+支持更准确的性能估算算法
 
 - **启动时间**：
   - 停止应用（双重保障）：
@@ -168,153 +180,48 @@
   - 等待时间：启动后等待8秒确保应用完全加载
 
 ### iOS版本支持矩阵
-| 功能 | iOS 15 | iOS 16 | iOS 17+ |
-|------|--------|--------|---------|
+| 功能 | iOS 10-14 | iOS 15-16 | iOS 17+ |
+|------|------------|-----------|---------|
 | CPU监控 | ✅ 基础 | ✅ 增强 | ✅ 最新API |
 | 内存监控 | ✅ 基础 | ✅ 增强 | ✅ 最新API |
 | 网络监控 | ✅ 基础 | ✅ 增强 | ✅ 最新API |
 | FPS监控 | ✅ 估算 | ✅ 智能估算 | ✅ 智能估算+ |
 | 电池监控 | ✅ 基础 | ✅ 增强 | ✅ 最新API |
 
-### 桌面平台支持
 
-#### Windows平台
-- **CPU监控**：
-  - 方法1：使用psutil库（推荐）
-    - 命令示例：`import psutil; psutil.cpu_percent(interval=1)`
-    - 输出格式：`45.2`
-    - 适用场景：快速获取系统CPU使用率
-  - 方法2：使用WMI（Windows Management Instrumentation）
-    - 命令示例：`wmi.WMI().Win32_Processor()`
-    - 输出格式：处理器负载百分比
-    - 适用场景：获取详细的处理器信息
-
-- **内存监控**：
-  - 方法：使用psutil库
-    - 命令示例：`import psutil; psutil.virtual_memory()`
-    - 输出格式：内存使用统计信息
-    - 适用场景：监控系统内存使用情况
-
-- **磁盘I/O监控**：
-  - 方法：使用psutil库
-    - 命令示例：`import psutil; psutil.disk_io_counters()`
-    - 输出格式：磁盘读写统计
-    - 适用场景：监控磁盘性能
-
-- **网络I/O监控**：
-  - 方法：使用psutil库
-    - 命令示例：`import psutil; psutil.net_io_counters()`
-    - 输出格式：网络收发统计
-    - 适用场景：监控网络性能
-
-#### Linux平台
-- **CPU监控**：
-  - 方法1：使用psutil库（推荐）
-    - 命令示例：`import psutil; psutil.cpu_percent(interval=1)`
-    - 输出格式：`45.2`
-    - 适用场景：快速获取系统CPU使用率
-  - 方法2：读取/proc/stat文件
-    - 命令示例：`cat /proc/stat`
-    - 输出格式：CPU时间统计
-    - 适用场景：获取详细的CPU统计信息
-  - 方法3：使用top命令
-    - 命令示例：`top -bn1`
-    - 输出格式：系统进程和CPU使用情况
-    - 适用场景：实时监控系统状态
-
-- **内存监控**：
-  - 方法1：使用psutil库
-    - 命令示例：`import psutil; psutil.virtual_memory()`
-    - 输出格式：内存使用统计信息
-    - 适用场景：监控系统内存使用情况
-  - 方法2：读取/proc/meminfo文件
-    - 命令示例：`cat /proc/meminfo`
-    - 输出格式：详细的内存信息
-    - 适用场景：获取系统内存详细信息
-
-- **磁盘I/O监控**：
-  - 方法1：使用psutil库
-    - 命令示例：`import psutil; psutil.disk_io_counters()`
-    - 输出格式：磁盘读写统计
-    - 适用场景：监控磁盘性能
-  - 方法2：使用iostat命令
-    - 命令示例：`iostat -x 1 1`
-    - 输出格式：磁盘I/O统计
-    - 适用场景：获取详细的磁盘性能数据
-
-- **网络I/O监控**：
-  - 方法1：使用psutil库
-    - 命令示例：`import psutil; psutil.net_io_counters()`
-    - 输出格式：网络收发统计
-    - 适用场景：监控网络性能
-  - 方法2：使用netstat命令
-    - 命令示例：`netstat -i`
-    - 输出格式：网络接口统计
-    - 适用场景：获取网络接口详细信息
-
-#### macOS平台
-- **CPU监控**：
-  - 方法1：使用psutil库（推荐）
-    - 命令示例：`import psutil; psutil.cpu_percent(interval=1)`
-    - 输出格式：`45.2`
-    - 适用场景：快速获取系统CPU使用率
-  - 方法2：使用top命令
-    - 命令示例：`top -l 1 -n 0`
-    - 输出格式：系统进程和CPU使用情况
-    - 适用场景：实时监控系统状态
-  - 方法3：使用iostat命令
-    - 命令示例：`iostat -c 1 1`
-    - 输出格式：CPU统计信息
-    - 适用场景：获取CPU性能统计
-
-- **内存监控**：
-  - 方法1：使用psutil库
-    - 命令示例：`import psutil; psutil.virtual_memory()`
-    - 输出格式：内存使用统计信息
-    - 适用场景：监控系统内存使用情况
-  - 方法2：使用vm_stat命令
-    - 命令示例：`vm_stat`
-    - 输出格式：虚拟内存统计
-    - 适用场景：获取内存管理详细信息
-
-- **磁盘I/O监控**：
-  - 方法1：使用psutil库
-    - 命令示例：`import psutil; psutil.disk_io_counters()`
-    - 输出格式：磁盘读写统计
-    - 适用场景：监控磁盘性能
-  - 方法2：使用iostat命令
-    - 命令示例：`iostat -d 1 1`
-    - 输出格式：磁盘I/O统计
-    - 适用场景：获取详细的磁盘性能数据
-
-- **网络I/O监控**：
-  - 方法1：使用psutil库
-    - 命令示例：`import psutil; psutil.net_io_counters()`
-    - 输出格式：网络收发统计
-    - 适用场景：监控网络性能
-  - 方法2：使用netstat命令
-    - 命令示例：`netstat -i`
-    - 输出格式：网络接口统计
-    - 适用场景：获取网络接口详细信息
 
 ### 移动平台支持矩阵
 | 功能 | Android | iOS |
 |------|---------|-------|
 | CPU监控 | ✅ dumpsys/top | ✅ ideviceinfo |
 | 内存监控 | ✅ dumpsys meminfo | ✅ ideviceinfo |
-| 磁盘监控 | ✅ dumpsys diskstats | ✅ ideviceinfo |
 | 网络监控 | ✅ dumpsys netstats | ✅ ideviceinfo |
-| 进程监控 | ✅ dumpsys procstats | ✅ ideviceinfo |
+| FPS监控 | ✅ dumpsys gfxinfo | ✅ 系统API |
+| 电池监控 | ✅ dumpsys battery | ✅ ideviceinfo |
+| 启动时间 | ✅ am start -W | ✅ idevicedebug |
 
 ## 安装
 
 ### 环境要求
 
 - Python 3.6+ 
-- Android设备（通过ADB连接）
-- iOS设备（通过libimobiledevice连接）
+- Android设备（Android 8.0+，通过ADB连接）
+- iOS设备（iOS 10.0+，通过libimobiledevice连接）
 - ADB工具（已添加到系统PATH）
 - libimobiledevice工具包（用于iOS设备测试）
+
+### 依赖安装
+
+```bash
+# 安装基础依赖（必需）
+pip install matplotlib numpy pandas plotly
+
+# 安装iOS支持依赖（可选）
+pip install libimobiledevice
+
+# 安装完整依赖
+pip install -r requirements.txt
+```
 
 ### 安装步骤
 
@@ -329,10 +236,12 @@ cd lperf
 2. 安装依赖
 
 ```bash
+# 安装基础依赖
+pip install matplotlib numpy pandas plotly
+
+# 安装完整依赖（可选）
 pip install -r requirements.txt
 ```
-
-> 注：当前版本主要使用Python标准库，可选安装requirements.txt中的依赖以支持更多功能
 
 #### iOS平台额外依赖
 对于iOS设备测试，还需要安装`libimobiledevice`工具包：
@@ -341,22 +250,52 @@ pip install -r requirements.txt
 - **Linux**: `sudo apt-get install libimobiledevice-tools`
 - **Windows**: 请参考[libimobiledevice官方文档](https://libimobiledevice.org/)进行安装
 
-3. 授予脚本执行权限
+3. 验证安装
 
 ```bash
-chmod +x lperf.py
+# 检查Python版本
+python --version
+
+# 检查依赖
+python -c "import matplotlib, numpy, pandas, plotly; print('依赖安装成功')"
 ```
 
 ## 使用指南
 
-### 基本用法
+### 快速开始
 
 ```bash
+# 1. 安装依赖
+pip install -r requirements.txt
+
+# 2. 连接设备（Android或iOS）
+# Android: 确保ADB可用，设备已连接
+# iOS: 确保libimobiledevice工具已安装，设备已连接
+
+# 3. 基本测试
 # Android设备测试
 python lperf.py -p com.example.app
 
 # iOS设备测试
 python lperf.py -p com.example.bundleid --platform ios
+
+# 4. 启动时间测试
+python lperf.py -p com.example.app --startup
+
+# 5. 多应用测试
+python lperf.py -p com.example.app1 com.example.app2 -t 60
+```
+
+### 高级功能演示脚本
+
+```bash
+# 运行高级功能演示（需要先安装相关依赖）
+python advanced_features_demo.py
+
+# 演示内容包括：
+# - 深度性能分析
+# - 机器学习性能预测  
+# - 实时性能告警系统
 ```
 
 ### 命令行参数
@@ -377,15 +316,7 @@ python lperf.py -p com.example.bundleid --platform ios
 
 ### 测试示例
 
-#### 应用级别测试（推荐）
 
-```bash
-# 使用应用测试脚本进行批量测试
-python3 app_performance_test.py -c app_test_config.json
-
-# 查看详细的应用测试指南
-cat APP_TESTING_GUIDE.md
-```
 
 #### Android设备测试
 ```bash
@@ -401,8 +332,8 @@ python lperf.py -p com.example.app -d device_id -t 60
 # 指定输出目录
 python lperf.py -p com.example.app -o ./my_results
 
-# 多设备并行测试
-python lperf.py -p com.example.app -d device_id1 device_id2 device_id3 -t 60 --max-workers 3
+# 多应用并行测试
+python lperf.py -p com.example.app1 com.example.app2 -t 60
 ```
 
 #### iOS设备测试
@@ -419,19 +350,19 @@ python lperf.py -p com.example.bundleid --platform ios -d device_id -t 60
 # 指定输出目录
 python lperf.py -p com.example.bundleid --platform ios -o ./my_results
 
-# 多设备并行测试
-python lperf.py -p com.example.bundleid --platform ios -d device_id1 device_id2 device_id3 -t 60 --max-workers 3
+# 多应用并行测试
+python lperf.py -p com.example.bundleid1 com.example.bundleid2 --platform ios -t 60
 ```
 
 
 
 ### 功能详解
 
-#### 多设备并行测试
-- 支持同时对多台设备进行性能测试，大幅提高测试效率
-- 每台设备的测试结果会保存在独立的子目录中
-- 测试完成后会生成总体统计报告，显示各设备的测试状态
-- 使用`--max-workers`参数控制最大并行线程数
+#### 多应用并行测试
+- 支持同时对多个应用进行性能测试，大幅提高测试效率
+- 每个应用的测试结果会保存在独立的子目录中
+- 测试完成后会生成总体统计报告，显示各应用的测试状态
+- 支持应用级别的性能对比分析
 
 #### 网络流量监控
 - 实时采集应用的网络流量数据（前台和后台流量）
@@ -469,23 +400,23 @@ python lperf.py -p com.example.bundleid --platform ios -d device_id1 device_id2 
 4. **interactive_reports/**：包含交互式HTML报告
    - interactive_report_{timestamp}.html：可在浏览器中打开的交互式报告
 
-### 多设备并行测试结果
+### 多应用并行测试结果
 
-进行多设备并行测试时，每个设备的测试结果会保存在输出目录下的独立子目录中：
+进行多应用并行测试时，每个应用的测试结果会保存在输出目录下的独立子目录中：
 
 ```
 output_dir/
-├── device_deviceid1/
+├── app_app1/
 │   ├── results.json
 │   ├── summary.json
 │   ├── charts/
 │   └── interactive_reports/
-├── device_deviceid2/
+├── app_app2/
 │   ├── results.json
 │   ├── summary.json
 │   ├── charts/
 │   └── interactive_reports/
-└── device_deviceid3/
+└── global/
     ├── results.json
     ├── summary.json
     ├── charts/
@@ -506,8 +437,8 @@ output_dir/
 
 ### 最新功能
 
-- [x] **iOS 17+ 全面支持**：支持最新iOS系统的性能监控
-- [x] **Android 14+ 增强支持**：支持最新Android系统的性能监控
+- [x] **iOS 10-18+ 全面支持**：支持iOS 10到最新版本的性能监控
+- [x] **Android 8-16+ 全面支持**：支持Android 8到最新版本的性能监控
 - [x] **智能平台检测**：自动检测设备平台类型和系统版本
 - [x] **性能基准测试**：支持基准测试和压力测试
 - [x] **系统兼容性检测**：自动检测工具可用性和系统兼容性
@@ -521,7 +452,7 @@ output_dir/
 - [x] Android平台全面支持
 
 - [x] 图形化测试报告生成
-- [x] 多设备并行测试
+- [x] 多应用并行测试
 - [x] 网络流量监控
 - [x] FPS流畅度测试
 - [x] 错误处理和重试机制
@@ -748,7 +679,7 @@ alert_system.stop_monitoring()
 
 ### 完整工作流程示例
 
-以下是一个完整的高级功能使用示例，展示如何集成深度分析、ML预测和实时告警：
+以下是一个完整的高级功能使用示例，展示如何集成深度分析、ML预测和实时告警（需要先安装相关依赖）：
 
 ```python
 #!/usr/bin/env python3
@@ -965,7 +896,7 @@ if __name__ == '__main__':
 
 1. **数据收集优化**：
    - 根据分析需求调整数据收集间隔
-   - 使用多线程并行收集多设备数据
+   - 使用多线程并行收集多应用数据
    - 定期清理历史数据以节省存储空间
 
 2. **分析性能优化**：
