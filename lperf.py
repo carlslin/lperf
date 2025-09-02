@@ -1915,8 +1915,10 @@ class LPerf:
             return {app: 0.0 for app in self.package_name}
     
     def start_monitoring(self, duration=None):
-        """开始监控性能数据"""
+        """开始监控性能数据 - 增强稳定性版本"""
         self.is_running = True
+        health_check_counter = 0  # 健康检查计数器
+        
         print(f"开始监控应用 {self.package_name} 的性能数据...")
         print(f"监控间隔: {self.interval}秒")
         if duration:
@@ -1925,23 +1927,46 @@ class LPerf:
         start_time = time.time()
         try:
             while self.is_running:
-                # 收集各项性能数据
-                cpu_usage = self.collect_cpu_data()
-                memory_usage = self.collect_memory_data()
-                battery_level = self.collect_battery_data()
-                network_usage = self.collect_network_data()
-                fps = self.collect_fps_data()
+                # 定期执行健康检查（每10次数据采集执行一次）
+                health_check_counter += 1
+                if health_check_counter >= 10:
+                    logger.info("执行定期健康检查...")
+                    health_status = self.system_health_check()
+                    
+                    if health_status['overall_status'] == 'critical':
+                        logger.warning("检测到严重问题，尝试自动恢复...")
+                        if self.auto_recovery():
+                            logger.info("自动恢复成功，继续监控")
+                        else:
+                            logger.error("自动恢复失败，停止监控")
+                            self.is_running = False
+                            break
+                    
+                    health_check_counter = 0
                 
-                # 打印实时数据 - 根据不同数据类型进行处理
-                if isinstance(cpu_usage, dict):
-                    # 应用维度数据，打印每个应用的数据
-                    print(f"[实时数据 - 全局] CPU: {self.results['global']['cpu'][-1]['value']:.2f}% | 内存: {self.results['global']['memory'][-1]['value']:.2f} MB | 电量: {battery_level}% | 网络: {self.results['global']['network'][-1]['value']:.2f} MB | FPS: {self.results['global']['fps'][-1]['value']:.2f}")
-                    # 打印每个应用的详细数据
-                    for app in self.package_name:
-                        print(f"  [应用 {app}] CPU: {cpu_usage.get(app, 0):.2f}% | 内存: {memory_usage.get(app, 0):.2f} MB | 网络: {network_usage.get(app, 0):.2f} MB | FPS: {fps.get(app, 0):.2f}")
-                else:
-                    # 单应用数据，保持原有格式
-                    print(f"[实时数据] CPU: {cpu_usage:.2f}% | 内存: {memory_usage:.2f} MB | 电量: {battery_level}% | 网络: {network_usage:.2f} MB | FPS: {fps:.2f}")
+                # 收集各项性能数据
+                try:
+                    cpu_usage = self.collect_cpu_data()
+                    memory_usage = self.collect_memory_data()
+                    battery_level = self.collect_battery_data()
+                    network_usage = self.collect_network_data()
+                    fps = self.collect_fps_data()
+                    
+                    # 打印实时数据 - 根据不同数据类型进行处理
+                    if isinstance(cpu_usage, dict):
+                        # 应用维度数据，打印每个应用的数据
+                        print(f"[实时数据 - 全局] CPU: {self.results['global']['cpu'][-1]['value']:.2f}% | 内存: {self.results['global']['memory'][-1]['value']:.2f} MB | 电量: {battery_level}% | 网络: {self.results['global']['network'][-1]['value']:.2f} MB | FPS: {self.results['global']['fps'][-1]['value']:.2f}")
+                        # 打印每个应用的详细数据
+                        for app in self.package_name:
+                            print(f"  [应用 {app}] CPU: {cpu_usage.get(app, 0):.2f}% | 内存: {memory_usage.get(app, 0):.2f} MB | 网络: {network_usage.get(app, 0):.2f} MB | FPS: {fps.get(app, 0):.2f}")
+                    else:
+                        # 单应用数据，保持原有格式
+                        print(f"[实时数据] CPU: {cpu_usage:.2f}% | 内存: {memory_usage:.2f} MB | 电量: {battery_level}% | 网络: {network_usage:.2f} MB | FPS: {fps:.2f}")
+                        
+                except Exception as e:
+                    logger.error(f"数据收集过程中出现异常: {e}")
+                    # 继续监控，不中断
+                    continue
                 
                 # 检查是否达到设定的监控时长
                 if duration and (time.time() - start_time) >= duration:
@@ -2595,6 +2620,337 @@ class LPerf:
             
         except Exception as e:
             logger.error(f"重置结果数据失败: {e}")
+    
+    def system_health_check(self):
+        """
+        系统健康检查 - 定期检查设备连接和系统状态
+        
+        Returns:
+            dict: 健康检查结果
+        """
+        try:
+            health_status = {
+                'timestamp': datetime.now().isoformat(),
+                'platform': self.platform,
+                'device_id': self.device_id,
+                'overall_status': 'unknown',
+                'checks': {}
+            }
+            
+            # 1. 设备连接状态检查
+            if self.platform == 'android':
+                connection_ok = self._check_android_connection_health()
+            elif self.platform == 'ios':
+                connection_ok = self._check_ios_connection_health()
+            else:
+                connection_ok = False
+                
+            health_status['checks']['device_connection'] = {
+                'status': 'ok' if connection_ok else 'failed',
+                'details': '设备连接正常' if connection_ok else '设备连接异常'
+            }
+            
+            # 2. 工具可用性检查
+            tools_ok = self._check_tools_availability()
+            health_status['checks']['tools_availability'] = {
+                'status': 'ok' if tools_ok else 'failed',
+                'details': '必要工具可用' if tools_ok else '必要工具不可用'
+            }
+            
+            # 3. 系统资源检查
+            resources_ok = self._check_system_resources()
+            health_status['checks']['system_resources'] = {
+                'status': 'ok' if resources_ok else 'warning',
+                'details': '系统资源充足' if resources_ok else '系统资源不足'
+            }
+            
+            # 4. 网络连接检查
+            network_ok = self._check_network_connectivity()
+            health_status['checks']['network_connectivity'] = {
+                'status': 'ok' if network_ok else 'warning',
+                'details': '网络连接正常' if network_ok else '网络连接异常'
+            }
+            
+            # 计算整体状态
+            failed_checks = sum(1 for check in health_status['checks'].values() if check['status'] == 'failed')
+            warning_checks = sum(1 for check in health_status['checks'].values() if check['status'] == 'warning')
+            
+            if failed_checks > 0:
+                health_status['overall_status'] = 'critical'
+            elif warning_checks > 0:
+                health_status['overall_status'] = 'warning'
+            else:
+                health_status['overall_status'] = 'healthy'
+            
+            # 记录健康检查结果
+            logger.info(f"系统健康检查完成，状态: {health_status['overall_status']}")
+            for check_name, check_result in health_status['checks'].items():
+                logger.info(f"  {check_name}: {check_result['status']} - {check_result['details']}")
+            
+            return health_status
+            
+        except Exception as e:
+            logger.error(f"系统健康检查失败: {e}")
+            return {
+                'timestamp': datetime.now().isoformat(),
+                'overall_status': 'error',
+                'error': str(e)
+            }
+    
+    def _check_android_connection_health(self):
+        """检查Android设备连接健康状态"""
+        try:
+            # 测试基本连接
+            result = self._run_adb_command("echo health_check")
+            if result != "health_check":
+                return False
+            
+            # 测试设备响应性
+            result = self._run_adb_command("getprop ro.build.version.release")
+            if not result or result.strip() == "":
+                return False
+            
+            # 测试应用访问权限
+            result = self._run_adb_command("dumpsys package | head -1")
+            if not result:
+                return False
+                
+            return True
+            
+        except Exception as e:
+            logger.warning(f"Android连接健康检查失败: {e}")
+            return False
+    
+    def _check_ios_connection_health(self):
+        """检查iOS设备连接健康状态"""
+        try:
+            # 测试基本连接
+            result = self._run_ios_command("ideviceinfo -k ProductType")
+            if not result or result.strip() == "":
+                return False
+            
+            # 测试设备信息获取
+            result = self._run_ios_command("ideviceinfo -k ProductVersion")
+            if not result or result.strip() == "":
+                return False
+                
+            return True
+            
+        except Exception as e:
+            logger.warning(f"iOS连接健康检查失败: {e}")
+            return False
+    
+    def _check_tools_availability(self):
+        """检查必要工具的可用性"""
+        try:
+            if self.platform == 'android':
+                # 检查ADB工具
+                result = subprocess.run(['adb', 'version'], capture_output=True, timeout=5)
+                return result.returncode == 0
+            elif self.platform == 'ios':
+                # 检查libimobiledevice工具
+                result = subprocess.run(['ideviceinfo', '--version'], capture_output=True, timeout=5)
+                return result.returncode == 0
+            else:
+                return False
+                
+        except Exception as e:
+            logger.warning(f"工具可用性检查失败: {e}")
+            return False
+    
+    def _check_system_resources(self):
+        """检查系统资源状态"""
+        try:
+            import psutil
+            
+            # 检查内存使用率
+            memory_percent = psutil.virtual_memory().percent
+            if memory_percent > 90:
+                logger.warning(f"内存使用率过高: {memory_percent}%")
+                return False
+            
+            # 检查磁盘空间
+            disk_percent = psutil.disk_usage('/').percent
+            if disk_percent > 95:
+                logger.warning(f"磁盘空间不足: {disk_percent}%")
+                return False
+                
+            return True
+            
+        except ImportError:
+            logger.debug("psutil未安装，跳过系统资源检查")
+            return True
+        except Exception as e:
+            logger.warning(f"系统资源检查失败: {e}")
+            return False
+    
+    def _check_network_connectivity(self):
+        """检查网络连接状态"""
+        try:
+            if self.platform == 'android':
+                # 检查Android网络状态
+                result = self._run_adb_command("ping -c 1 8.8.8.8")
+                return "1 packets transmitted, 1 received" in result
+            elif self.platform == 'ios':
+                # 检查iOS网络状态
+                result = self._run_ios_command("ideviceinfo -k WiFiAddress")
+                return result and result.strip() != ""
+            else:
+                return True
+                
+        except Exception as e:
+            logger.warning(f"网络连接检查失败: {e}")
+            return False
+    
+    def auto_recovery(self):
+        """
+        自动恢复机制 - 当检测到问题时自动尝试修复
+        
+        Returns:
+            bool: 恢复是否成功
+        """
+        try:
+            logger.info("开始自动恢复流程...")
+            
+            # 1. 执行健康检查
+            health_status = self.system_health_check()
+            
+            if health_status['overall_status'] == 'healthy':
+                logger.info("系统状态健康，无需恢复")
+                return True
+            
+            # 2. 尝试恢复设备连接
+            if health_status['checks'].get('device_connection', {}).get('status') == 'failed':
+                logger.info("尝试恢复设备连接...")
+                if self._recover_device_connection():
+                    logger.info("设备连接恢复成功")
+                else:
+                    logger.error("设备连接恢复失败")
+                    return False
+            
+            # 3. 尝试恢复工具可用性
+            if health_status['checks'].get('tools_availability', {}).get('status') == 'failed':
+                logger.info("尝试恢复工具可用性...")
+                if self._recover_tools_availability():
+                    logger.info("工具可用性恢复成功")
+                else:
+                    logger.error("工具可用性恢复失败")
+                    return False
+            
+            # 4. 重新执行健康检查
+            new_health_status = self.system_health_check()
+            
+            if new_health_status['overall_status'] in ['healthy', 'warning']:
+                logger.info("自动恢复成功，系统状态改善")
+                return True
+            else:
+                logger.error("自动恢复失败，系统状态仍为严重")
+                return False
+                
+        except Exception as e:
+            logger.error(f"自动恢复过程中出现异常: {e}")
+            return False
+    
+    def _recover_device_connection(self):
+        """尝试恢复设备连接"""
+        try:
+            if self.platform == 'android':
+                return self._recover_android_connection()
+            elif self.platform == 'ios':
+                return self._recover_ios_connection()
+            else:
+                return False
+        except Exception as e:
+            logger.error(f"设备连接恢复失败: {e}")
+            return False
+    
+    def _recover_android_connection(self):
+        """尝试恢复Android设备连接"""
+        try:
+            # 1. 重启ADB服务
+            logger.info("重启ADB服务...")
+            subprocess.run(['adb', 'kill-server'], capture_output=True, timeout=10)
+            time.sleep(2)
+            subprocess.run(['adb', 'start-server'], capture_output=True, timeout=10)
+            time.sleep(3)
+            
+            # 2. 重新检测设备
+            logger.info("重新检测设备...")
+            result = subprocess.run(['adb', 'devices'], capture_output=True, text=True, timeout=10)
+            
+            if result.returncode == 0 and 'device' in result.stdout:
+                # 3. 重新设置设备ID
+                lines = result.stdout.strip().split('\n')[1:]
+                for line in lines:
+                    if line.strip() and 'device' in line:
+                        device_id = line.split()[0]
+                        self.device_id = device_id
+                        logger.info(f"重新设置Android设备ID: {device_id}")
+                        return True
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"Android连接恢复失败: {e}")
+            return False
+    
+    def _recover_ios_connection(self):
+        """尝试恢复iOS设备连接"""
+        try:
+            # 1. 重新检测iOS设备
+            logger.info("重新检测iOS设备...")
+            result = subprocess.run(['idevice_id', '-l'], capture_output=True, text=True, timeout=10)
+            
+            if result.returncode == 0 and result.stdout.strip():
+                devices = [d.strip() for d in result.stdout.strip().split('\n') if d.strip()]
+                
+                if devices:
+                    # 2. 重新设置设备ID
+                    self.device_id = devices[0]
+                    logger.info(f"重新设置iOS设备ID: {self.device_id}")
+                    
+                    # 3. 测试连接
+                    test_result = subprocess.run(
+                        ['ideviceinfo', '-u', self.device_id, '-k', 'ProductType'], 
+                        capture_output=True, text=True, timeout=5
+                    )
+                    
+                    return test_result.returncode == 0
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"iOS连接恢复失败: {e}")
+            return False
+    
+    def _recover_tools_availability(self):
+        """尝试恢复工具可用性"""
+        try:
+            if self.platform == 'android':
+                # 检查ADB路径
+                adb_path = subprocess.run(['which', 'adb'], capture_output=True, text=True, timeout=5)
+                if adb_path.returncode == 0:
+                    logger.info(f"ADB路径: {adb_path.stdout.strip()}")
+                    return True
+                else:
+                    logger.error("ADB工具未找到")
+                    return False
+                    
+            elif self.platform == 'ios':
+                # 检查libimobiledevice工具
+                ideviceinfo_path = subprocess.run(['which', 'ideviceinfo'], capture_output=True, text=True, timeout=5)
+                if ideviceinfo_path.returncode == 0:
+                    logger.info(f"ideviceinfo路径: {ideviceinfo_path.stdout.strip()}")
+                    return True
+                else:
+                    logger.error("libimobiledevice工具未找到")
+                    return False
+            
+            return False
+            
+        except Exception as e:
+            logger.error(f"工具可用性恢复失败: {e}")
+            return False
 
 
 class PerformanceBenchmark:
