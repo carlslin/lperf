@@ -10,6 +10,7 @@
 - **兼容性好**：支持Android 8-16+和iOS 10-18+，适配多种机型和系统版本
 - **多维度指标**：支持CPU、内存、电池、网络流量、FPS帧率、启动时间等多维度性能指标采集
 - **多应用并行测试**：支持同时对多个应用进行并行性能测试，提高测试效率
+- **应用生命周期自动测试**：支持根据应用启动和关闭来自动启动和关闭性能测试
 - **可视化报告**：生成静态图表和交互式HTML报告，直观展示性能数据
 
 ## 功能
@@ -284,7 +285,41 @@ python lperf.py -p com.example.app --startup
 
 # 5. 多应用测试
 python lperf.py -p com.example.app1 com.example.app2 -t 60
+
+# 6. 应用生命周期自动测试
+python lperf.py -p com.example.app --auto-lifecycle --wait-time 30
 ```
+
+### 应用生命周期自动测试
+
+lperf支持根据应用启动和关闭来自动启动和关闭性能测试，特别适合自动化测试场景：
+
+```bash
+# 基本用法：等待30秒（默认）
+python lperf.py -p com.example.app --auto-lifecycle
+
+# 自定义等待时间：等待60秒
+python lperf.py -p com.example.app --auto-lifecycle --wait-time 60
+
+# 多应用生命周期测试
+python lperf.py -p com.example.app1 com.example.app2 --auto-lifecycle --wait-time 45
+```
+
+**工作流程：**
+1. **自动关闭应用** - 确保应用处于关闭状态
+2. **启动应用** - 自动启动目标应用
+3. **等待启动完成** - 等待应用完全加载
+4. **开始性能监控** - 自动开始收集性能数据
+5. **等待指定时间** - 监控运行指定时长（默认30秒）
+6. **停止监控** - 自动停止数据收集
+7. **关闭应用** - 自动关闭应用
+8. **保存结果** - 保存本次测试数据
+
+**适用场景：**
+- 自动化性能测试
+- CI/CD流水线集成
+- 应用启动性能评估
+- 批量应用性能测试
 
 ### 高级功能演示脚本
 
@@ -308,6 +343,8 @@ python advanced_features_demo.py
 -t, --time          测试时长(秒)
 -o, --output        结果输出目录，默认为./reports
 --startup           仅测试启动时间
+--auto-lifecycle    根据应用生命周期自动启动和关闭性能测试
+--wait-time         应用启动后等待时间（秒），默认30秒
 --platform          设备平台类型，可选值: android, ios (自动检测如果未指定)
 --no-charts         不生成静态图表
 --no-interactive    不生成交互式HTML报告
@@ -383,6 +420,14 @@ python lperf.py -p com.example.bundleid1 com.example.bundleid2 --platform ios -t
 - Android平台通过am force-stop和am start -W命令实现
 - iOS平台提供多种启动方法，包括自动和手动方式
 - 支持启动过程监控和时间统计
+
+#### 应用生命周期自动测试
+- 支持根据应用启动和关闭来自动启动和关闭性能测试
+- 自动化的应用启动、监控、关闭流程
+- 可配置的等待时间（默认30秒）
+- 支持多应用批量测试
+- 自动保存每次测试的独立结果
+- 适用于CI/CD流水线和自动化测试场景
 
 ## 测试结果
 

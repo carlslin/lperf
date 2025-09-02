@@ -2234,6 +2234,205 @@ class LPerf:
         
         # 返回最后一个报告文件作为主要报告
         return report_files[-1] if report_files else None
+    
+    def auto_monitor_with_app_lifecycle(self, wait_time=30):
+        """
+        根据应用生命周期自动启动和关闭性能测试
+        
+        Args:
+            wait_time (int): 应用启动后等待时间（秒），默认30秒
+            
+        Returns:
+            dict: 测试结果
+        """
+        try:
+            print(f"开始应用生命周期性能测试，等待时间: {wait_time}秒")
+            
+            if self.platform == 'android':
+                return self._android_auto_monitor_with_lifecycle(wait_time)
+            elif self.platform == 'ios':
+                return self._ios_auto_monitor_with_lifecycle(wait_time)
+            else:
+                logger.error(f"不支持的平台: {self.platform}")
+                return None
+                
+        except Exception as e:
+            logger.error(f"应用生命周期性能测试失败: {e}")
+            return None
+    
+    def _android_auto_monitor_with_lifecycle(self, wait_time):
+        """Android平台应用生命周期自动监控"""
+        try:
+            results = {}
+            
+            for app in self.package_name:
+                print(f"\n=== 测试应用: {app} ===")
+                
+                # 1. 确保应用已关闭
+                print("1. 关闭应用...")
+                self._command_method(f"am force-stop {app}")
+                time.sleep(2)
+                
+                # 2. 启动应用并开始监控
+                print("2. 启动应用...")
+                start_time = time.time()
+                self._command_method(f"am start -W -n {app}/{app}.MainActivity")
+                
+                # 3. 等待应用完全启动
+                print(f"3. 等待应用启动完成...")
+                time.sleep(5)
+                
+                # 4. 开始性能监控
+                print("4. 开始性能监控...")
+                self.start_monitoring()
+                
+                # 5. 等待指定时间
+                print(f"5. 监控运行中，等待 {wait_time} 秒...")
+                time.sleep(wait_time)
+                
+                # 6. 停止监控
+                print("6. 停止性能监控...")
+                self.stop_monitoring()
+                
+                # 7. 关闭应用
+                print("7. 关闭应用...")
+                self._command_method(f"am force-stop {app}")
+                time.sleep(2)
+                
+                # 8. 保存本次测试结果
+                app_results = self.results.copy()
+                results[app] = app_results
+                
+                # 9. 重置结果数据，准备下次测试
+                self._reset_results()
+                
+                print(f"应用 {app} 测试完成")
+                
+            return results
+            
+        except Exception as e:
+            logger.error(f"Android应用生命周期监控失败: {e}")
+            return None
+    
+    def _ios_auto_monitor_with_lifecycle(self, wait_time):
+        """iOS平台应用生命周期自动监控"""
+        try:
+            results = {}
+            
+            for app in self.package_name:
+                print(f"\n=== 测试应用: {app} ===")
+                
+                # 1. 确保应用已关闭
+                print("1. 关闭应用...")
+                try:
+                    self._command_method(f"idevicedebug -e kill {app}")
+                except Exception:
+                    pass
+                try:
+                    self._command_method(f"ideviceinstaller -U {app}")
+                except Exception:
+                    pass
+                time.sleep(2)
+                
+                # 2. 启动应用
+                print("2. 启动应用...")
+                app_launched = False
+                
+                # 尝试多种启动方式
+                try:
+                    # 方式1: idevicedebug run
+                    self._command_method(f"idevicedebug run {app}")
+                    app_launched = True
+                    print("使用idevicedebug启动成功")
+                except Exception:
+                    print("idevicedebug启动失败，尝试其他方式...")
+                
+                if not app_launched and platform.system() == 'Darwin':
+                    try:
+                        # 方式2: AppleScript (仅macOS)
+                        applescript = f'''tell application "Xcode" to launch simulator app with bundle identifier "{app}"'''
+                        subprocess.run(['osascript', '-e', applescript], capture_output=True)
+                        app_launched = True
+                        print("使用AppleScript启动成功")
+                    except Exception:
+                        print("AppleScript启动失败...")
+                
+                if not app_launched:
+                    print(f"请手动启动应用 {app}...")
+                    for i in range(5, 0, -1):
+                        print(f"等待启动... {i}秒", end='\r')
+                        time.sleep(1)
+                    print(" " * 30, end='\r')
+                
+                # 3. 等待应用完全启动
+                print("3. 等待应用启动完成...")
+                time.sleep(8)
+                
+                # 4. 开始性能监控
+                print("4. 开始性能监控...")
+                self.start_monitoring()
+                
+                # 5. 等待指定时间
+                print(f"5. 监控运行中，等待 {wait_time} 秒...")
+                time.sleep(wait_time)
+                
+                # 6. 停止监控
+                print("6. 停止性能监控...")
+                self.stop_monitoring()
+                
+                # 7. 关闭应用
+                print("7. 关闭应用...")
+                try:
+                    self._command_method(f"idevicedebug -e kill {app}")
+                except Exception:
+                    pass
+                time.sleep(2)
+                
+                # 8. 保存本次测试结果
+                app_results = self.results.copy()
+                results[app] = app_results
+                
+                # 9. 重置结果数据，准备下次测试
+                self._reset_results()
+                
+                print(f"应用 {app} 测试完成")
+                
+            return results
+            
+        except Exception as e:
+            logger.error(f"iOS应用生命周期监控失败: {e}")
+            return None
+    
+    def _reset_results(self):
+        """重置结果数据，准备下次测试"""
+        try:
+            # 重新初始化结果数据结构
+            self.results = {
+                'global': {
+                    'cpu': [],
+                    'memory': [],
+                    'battery': [],
+                    'network': [],
+                    'fps': [],
+                    'startup_time': []
+                }
+            }
+            
+            # 为每个应用初始化结果数据
+            for app in self.package_name:
+                self.results[app] = {
+                    'cpu': [],
+                    'memory': [],
+                    'battery': [],
+                    'network': [],
+                    'fps': [],
+                    'startup_time': []
+                }
+                
+            logger.debug("结果数据已重置")
+            
+        except Exception as e:
+            logger.error(f"重置结果数据失败: {e}")
 
 
 class PerformanceBenchmark:
@@ -2572,6 +2771,8 @@ def main():
     parser.add_argument('-t', '--time', type=int, help='测试时长(秒)')
     parser.add_argument('-o', '--output', default='./reports', help='结果输出目录')
     parser.add_argument('--startup', action='store_true', help='仅测试启动时间')
+    parser.add_argument('--auto-lifecycle', action='store_true', help='根据应用生命周期自动启动和关闭性能测试')
+    parser.add_argument('--wait-time', type=int, default=30, help='应用启动后等待时间（秒），默认30秒')
     parser.add_argument('--platform', choices=['android', 'ios'], help='设备平台类型（自动检测如果未指定）')
     parser.add_argument('-c', '--config', help='配置文件路径')
     parser.add_argument('--no-charts', action='store_true', help='不生成静态图表')
@@ -2633,7 +2834,33 @@ def main():
             )
             
             # 执行测试
-            if args.startup:
+            if args.auto_lifecycle:
+                # 应用生命周期自动测试
+                if isinstance(package_name, list):
+                    print(f"开始应用生命周期性能测试，应用数量: {len(package_name)}")
+                    print(f"应用列表: {', '.join(package_name)}")
+                else:
+                    print(f"开始应用生命周期性能测试: {package_name}")
+                
+                lifecycle_results = lperf.auto_monitor_with_app_lifecycle(args.wait_time)
+                
+                if lifecycle_results:
+                    print("\n=== 应用生命周期测试完成 ===")
+                    for app, results in lifecycle_results.items():
+                        print(f"应用 {app}: 测试完成，数据已保存")
+                    
+                    # 生成报告
+                    report_file = lperf.save_results()
+                    lperf.generate_summary()
+                    
+                    if not args.no_charts:
+                        lperf.generate_charts()
+                    if not args.no_interactive:
+                        interactive_report = lperf.generate_interactive_report()
+                else:
+                    print("应用生命周期测试失败")
+                    
+            elif args.startup:
                 # 仅测试启动时间
                 if isinstance(package_name, list):
                     print(f"开始测量 {len(package_name)} 个应用的启动时间...")
